@@ -1,6 +1,10 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { validateOffice } from "../src/shared/office-schema.js";
+import { loadOffice } from "../src/sidecar/office-store.js";
 
 const base = {
   version: 1,
@@ -49,5 +53,15 @@ describe("validateOffice", () => {
       rooms: [{ id: "r1", floorId: "ghost", name: "Frontend", color: "blue", paths: ["web/"], maxDesks: 2 }],
     };
     assert.equal(validateOffice(bad).ok, false);
+  });
+});
+
+describe("loadOffice fallback", () => {
+  it("seeds a built-in office when no sample file exists (foreign project)", () => {
+    const ws = fs.mkdtempSync(path.join(os.tmpdir(), "officecode-foreign-"));
+    const store = loadOffice(ws);
+    assert.ok(store.office.desks.length > 0);
+    assert.ok(store.office.rooms.length > 0);
+    assert.equal(validateOffice(store.office).ok, true);
   });
 });
