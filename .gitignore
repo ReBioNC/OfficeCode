@@ -1,0 +1,9 @@
+node_modules/
+dist/
+dist-test/
+dashboard/public/
+.officecode/
+.superpowers/
+output/
+*.log
+.DS_Store

@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "building": "HQ",
+  "floors": [{ "id": "floor-1", "name": "Webapp", "worktree": null }],
+  "rooms": [
+    { "id": "room-frontend", "floorId": "floor-1", "name": "Frontend", "color": "blue", "paths": ["web/"], "maxDesks": 3 },
+    { "id": "room-qa", "floorId": "floor-1", "name": "QA", "color": "green", "paths": ["web/", "tests/"], "maxDesks": 2 }
+  ],
+  "desks": [
+    { "id": "desk-fe-1", "roomId": "room-frontend", "label": "FE-1" },
+    { "id": "desk-qa-1", "roomId": "room-qa", "label": "QA-1" }
+  ],
+  "hallways": [
+    { "id": "hall-fe-qa", "fromRoomId": "room-frontend", "toRoomId": "room-qa", "open": true }
+  ],
+  "objects": [
+    { "id": "obj-printer", "roomId": "room-qa", "kind": "printer", "grants": ["read"] }
+  ],
+  "roster": []
+}
