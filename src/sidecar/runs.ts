@@ -1,0 +1,104 @@
+import crypto from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
+import { makeEvent, type RunState } from "../shared/events.js";
+import { appendEvent, nextSeq } from "./ledgers.js";
+import type { OfficeStore } from "./office-store.js";
+import type { Driver } from "./drivers.js";
+
+export interface RunRecord {
+  id: string;
+  deskId: string;
+  role: string;
+  prompt: string;
+  state: RunState;
+  transcriptPath: string;
+  outboxDir: string;
+  exitCode: number | null;
+}
+
+const runs = new Map<string, RunRecord>();
+let claim: Promise<void> = Promise.resolve();
+
+export function getRun(_store: OfficeStore, id: string): RunRecord | undefined {
+  void _store;
+  return runs.get(id);
+}
+
+export function listRuns(): RunRecord[] {
+  return [...runs.values()];
+}
+
+function setState(store: OfficeStore, run: RunRecord, state: RunState, message?: string): void {
+  run.state = state;
+  appendEvent(store.dir, makeEvent(nextSeq(store.dir), run.id, "run.state", { state, message }));
+}
+
+export async function createRun(
+  store: OfficeStore,
+  workspaceDir: string,
+  driver: Driver,
+  input: { deskId: string; role: string; prompt: string },
+): Promise<RunRecord> {
+  const ticket = claim.then(() => {
+    if (store.occupants.has(input.deskId)) {
+      const err = new Error(`desk ${input.deskId} is occupied (409)`) as Error & { code: number };
+      err.code = 409;
+      throw err;
+    }
+    const id = `run-${crypto.randomBytes(4).toString("hex")}`;
+    store.occupants.set(input.deskId, id);
+    return id;
+  });
+  claim = ticket.then(
+    () => undefined,
+    () => undefined,
+  );
+  const id = await ticket;
+
+  const run: RunRecord = {
+    id,
+    deskId: input.deskId,
+    role: input.role,
+    prompt: input.prompt,
+    state: "walking",
+    transcriptPath: path.join(workspaceDir, ".officecode", "transcripts", `${id}.md`),
+    outboxDir: path.join(workspaceDir, "output", "outbox", id),
+    exitCode: null,
+  };
+  runs.set(id, run);
+  appendEvent(store.dir, makeEvent(nextSeq(store.dir), id, "run.created", { state: "walking", message: input.role }));
+  fs.mkdirSync(path.dirname(run.transcriptPath), { recursive: true });
+  fs.appendFileSync(run.transcriptPath, `# ${id} (${input.role} @ ${input.deskId})\n\n> ${input.prompt}\n`, "utf8");
+  setState(store, run, "thinking");
+
+  let failed = false;
+  const code = await driver.start(input.prompt, (e) => {
+    if (e.kind === "chunk") {
+      if (run.state !== "acting") setState(store, run, "acting");
+      fs.appendFileSync(run.transcriptPath, e.text, "utf8");
+      appendEvent(store.dir, makeEvent(nextSeq(store.dir), id, "run.chunk", { message: e.text.slice(0, 200) }));
+    } else if (e.kind === "error") {
+      failed = true;
+      fs.appendFileSync(run.transcriptPath, `\n[error] ${e.message}\n`, "utf8");
+    }
+  });
+
+  run.exitCode = code;
+  if (failed || code !== 0) {
+    setState(store, run, "blocked", code === 127 ? "missing-cli" : `exit ${code}`);
+  } else {
+    setState(store, run, "delivering");
+    fs.mkdirSync(run.outboxDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(run.outboxDir, "manifest.json"),
+      JSON.stringify({ runId: id, role: input.role, desk: input.deskId, prompt: input.prompt }, null, 2),
+      "utf8",
+    );
+    fs.writeFileSync(path.join(run.outboxDir, "result.md"), fs.readFileSync(run.transcriptPath, "utf8"), "utf8");
+    appendEvent(store.dir, makeEvent(nextSeq(store.dir), id, "run.finished", { state: "done" }));
+    setState(store, run, "done");
+  }
+  store.occupants.delete(input.deskId);
+  return run;
+}
