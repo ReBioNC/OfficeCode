@@ -5,11 +5,16 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>OfficeCode — floor 1</title>
   <style>
-    body { font-family: system-ui, sans-serif; margin: 0; display: flex; height: 100vh; }
-    #floor { flex: 2; background: #101828; }
-    #side { flex: 1; padding: 12px; overflow: auto; background: #f8fafc; }
-    #side input, #side select, #side textarea { width: 100%; margin: 4px 0; }
-    #transcript { white-space: pre-wrap; background: #0b1220; color: #e2e8f0; padding: 8px; min-height: 120px; }
+    :root { --ink: #262033; --paper: #F5EFE2; --accent: #4A90D9; }
+    body { font-family: 'Courier New', monospace; margin: 0; display: flex; height: 100vh; background: var(--ink); color: var(--ink); }
+    #floor { flex: 2; background: #DCB47E; image-rendering: pixelated; }
+    #side { flex: 1; padding: 14px; overflow: auto; background: var(--paper); border-left: 4px solid var(--ink); }
+    #side h1, #side h2 { letter-spacing: 1px; }
+    #side input, #side select, #side textarea { width: 100%; margin: 4px 0; font-family: inherit; border: 3px solid var(--ink); background: #FFFDF6; padding: 4px; box-sizing: border-box; }
+    #side button { font-family: inherit; font-weight: bold; border: 3px solid var(--ink); background: var(--accent); color: #fff; padding: 6px 12px; box-shadow: 3px 3px 0 var(--ink); cursor: pointer; }
+    #side button:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--ink); }
+    #runs { list-style: square; padding-left: 20px; }
+    #transcript { white-space: pre-wrap; background: #262033; color: #FFF6E5; padding: 8px; min-height: 120px; border: 3px solid var(--ink); }
   </style>
 </head>
 <body>
