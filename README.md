@@ -29,6 +29,25 @@ Lalu buka **http://127.0.0.1:8787** di browser.
 > Port bisa diganti: `set PORT=8799 && ...` (Windows) atau
 > `PORT=8799 ...` (macOS/Linux).
 
+## Pakai dari opencode (TUI)
+
+Buka opencode di repo ini — plugin project langsung aktif:
+
+1. Setiap connect, muncul toast `🏢 Office dashboard → http://127.0.0.1:8787`.
+   Klik/buka URL itu di browser untuk visual live.
+2. Kalau sidecar belum jalan, plugin **menyalakannya otomatis**
+   (butuh hasil `npm run build` dulu). Tidak perlu terminal kedua.
+3. Setiap prompt dan tool yang berjalan di opencode muncul sebagai karakter
+   di lantai (meja auto-assign, state live: walking → acting → done).
+   Approve permission yang pending = bubble `Butuh bantuan ❗`.
+4. Command `/dashboard` di opencode menampilkan URL + status sekilas.
+
+Untuk project lain: copy `.opencode/plugins/office-dashboard.js` ke
+`~/.config/opencode/plugins/` dan set `OFFICECODE_ROOT` ke checkout repo ini.
+Env: `OFFICECODE_PORT` (default 8787), `OFFICECODE_NO_SPAWN=1` (jangan
+auto-start). Dashboard tidak pernah merusak opencode — kalau sidecar mati,
+semua mirror gagal diam-diam.
+
 ## Coba pertama kali (2 menit)
 
 Dashboard itu **murni visual** — semua perintah lewat prompt opencode
