@@ -6,6 +6,8 @@ import { loadOffice } from "./office-store.js";
 import { selectDriver } from "./drivers.js";
 import { loadModels, saveModels, detectOpencode, type ModelSlot } from "./models.js";
 import { createRun, getRun, listRuns, setOnSettled } from "./runs.js";
+import { registerMirrorRun, mirrorEvent, finishMirrorRun } from "./runs.js";
+import { RUN_STATES, type RunState } from "../shared/events.js";
 import { enqueueOrRun, pendingList, pumpQueue } from "./queue.js";
 import { loadBudgets, saveBudgets, spentToday, overBudget, settleSpend, type BudgetsDoc } from "./budgets.js";
 import { loadModels as loadModelSlots } from "./models.js";
@@ -167,8 +169,63 @@ export async function startServer(workspaceDir: string, port: number): Promise<{
       });
       return;
     }
-    if (req.method === "GET" && url.pathname === "/api/queue") {
-      sendJson(res, 200, { queue: pendingList().map((q, i) => ({ position: i + 1, deskId: q.deskId, role: q.role, prompt: q.prompt })) });
+    // Mirror: external opencode sessions projected as characters.
+    if ((req.method === "POST" && url.pathname === "/api/mirror/session") ||
+        (req.method === "POST" && url.pathname === "/api/mirror/event") ||
+        (req.method === "POST" && url.pathname === "/api/mirror/finish")) {
+      let body = "";
+      req.on("data", (c: Buffer) => { body += c.toString("utf8"); });
+      req.on("end", () => {
+        void (async () => {
+          try {
+            const input = JSON.parse(body) as {
+              sessionId?: string; role?: string; prompt?: string;
+              state?: string; message?: string; outcome?: string;
+            };
+            if (!input.sessionId) {
+              sendJson(res, 400, { error: "sessionId required" });
+              return;
+            }
+            if (url.pathname === "/api/mirror/session") {
+              const run = await registerMirrorRun(store, workspaceDir, {
+                sessionId: input.sessionId,
+                role: input.role ?? "opencode",
+                prompt: input.prompt ?? "opencode session",
+              });
+              broadcast({ runId: run.id, state: run.state });
+              sendJson(res, 201, { run });
+              return;
+            }
+            if (url.pathname === "/api/mirror/event") {
+              if (!input.state || !(RUN_STATES as readonly string[]).includes(input.state) || input.state === "off-duty") {
+                sendJson(res, 400, { error: `state must be one of: ${(RUN_STATES as readonly string[]).filter((s) => s !== "off-duty").join(", ")}` });
+                return;
+              }
+              const run = await mirrorEvent(store, input.sessionId, {
+                state: input.state as RunState,
+                message: input.message,
+                prompt: input.prompt,
+              });
+              broadcast({ runId: run.id, state: run.state });
+              sendJson(res, 200, { run });
+              return;
+            }
+            if (input.outcome !== "done" && input.outcome !== "blocked") {
+              sendJson(res, 400, { error: 'outcome must be "done" or "blocked"' });
+              return;
+            }
+            const run = await finishMirrorRun(store, input.sessionId, input.outcome, input.message);
+            broadcast({ runId: run.id, state: run.state });
+            sendJson(res, 200, { run });
+          } catch (err) {
+            const code = (err as Error & { code?: number }).code;
+            sendJson(res, code === 409 ? 409 : code === 404 ? 404 : 500, { error: (err as Error).message });
+          }
+        })();
+      });
+      return;
+    }
+    if (req.method === "GET" && url.pathname === "/api/queue") {      sendJson(res, 200, { queue: pendingList().map((q, i) => ({ position: i + 1, deskId: q.deskId, role: q.role, prompt: q.prompt })) });
       return;
     }
     if (req.method === "GET" && url.pathname === "/api/events") {

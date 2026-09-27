@@ -33,6 +33,102 @@ export function listRuns(): RunRecord[] {
   return [...runs.values()];
 }
 
+// --- Mirror: external opencode sessions projected as characters ---
+// Every state here comes from a real opencode event forwarded by the
+// project plugin. Nothing is simulated.
+
+const mirrorBySession = new Map<string, string>();
+
+export function getMirrorRun(sessionId: string): RunRecord | undefined {
+  const id = mirrorBySession.get(sessionId);
+  return id ? runs.get(id) : undefined;
+}
+
+function firstFreeDesk(store: OfficeStore): string | null {
+  for (const room of store.office.rooms) {
+    for (const desk of store.office.desks) {
+      if (desk.roomId === room.id && !store.occupants.has(desk.id)) return desk.id;
+    }
+  }
+  return null;
+}
+
+function notFound(sessionId: string): Error & { code: number } {
+  const err = new Error(`unknown mirrored session: ${sessionId} (404)`) as Error & { code: number };
+  err.code = 404;
+  return err;
+}
+
+export async function registerMirrorRun(
+  store: OfficeStore,
+  workspaceDir: string,
+  input: { sessionId: string; role: string; prompt: string },
+): Promise<RunRecord> {
+  const existing = getMirrorRun(input.sessionId);
+  if (existing) return existing;
+  const deskId = firstFreeDesk(store);
+  if (!deskId) {
+    const err = new Error("no free desk for mirrored session (409)") as Error & { code: number };
+    err.code = 409;
+    throw err;
+  }
+  const id = `mirror-${crypto.randomBytes(4).toString("hex")}`;
+  store.occupants.set(deskId, id);
+  const run: RunRecord = {
+    id,
+    deskId,
+    role: input.role || "opencode",
+    prompt: input.prompt || "opencode session",
+    state: "walking",
+    transcriptPath: path.join(workspaceDir, ".officecode", "transcripts", `${id}.md`),
+    outboxDir: path.join(workspaceDir, "output", "outbox", id),
+    exitCode: null,
+  };
+  runs.set(id, run);
+  mirrorBySession.set(input.sessionId, id);
+  appendEvent(store.dir, makeEvent(nextSeq(store.dir), id, "run.created", { state: "walking", message: `mirror ${input.sessionId}` }));
+  fs.mkdirSync(path.dirname(run.transcriptPath), { recursive: true });
+  fs.appendFileSync(run.transcriptPath, `# ${id} (mirror ${input.sessionId} @ ${deskId})\n\n> ${run.prompt}\n`, "utf8");
+  return run;
+}
+
+export async function mirrorEvent(
+  store: OfficeStore,
+  sessionId: string,
+  event: { state: RunState; message?: string; prompt?: string },
+): Promise<RunRecord> {
+  const run = getMirrorRun(sessionId);
+  if (!run) throw notFound(sessionId);
+  if (event.prompt) run.prompt = event.prompt;
+  if (event.message) {
+    fs.appendFileSync(run.transcriptPath, `\n[${run.state}→${event.state}] ${event.message}\n`, "utf8");
+  }
+  setState(store, run, event.state, event.message);
+  return run;
+}
+
+export async function finishMirrorRun(
+  store: OfficeStore,
+  sessionId: string,
+  outcome: "done" | "blocked",
+  message?: string,
+): Promise<RunRecord> {
+  const run = getMirrorRun(sessionId);
+  if (!run) throw notFound(sessionId);
+  appendEvent(store.dir, makeEvent(nextSeq(store.dir), run.id, "run.finished", { state: outcome }));
+  setState(store, run, outcome, message);
+  store.occupants.delete(run.deskId);
+  mirrorBySession.delete(sessionId);
+  if (settled) {
+    try {
+      settled();
+    } catch {
+      // pump failures must never break mirror completion
+    }
+  }
+  return run;
+}
+
 function setState(store: OfficeStore, run: RunRecord, state: RunState, message?: string): void {
   run.state = state;
   appendEvent(store.dir, makeEvent(nextSeq(store.dir), run.id, "run.state", { state, message }));
