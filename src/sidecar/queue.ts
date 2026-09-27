@@ -1,5 +1,7 @@
 import { makeEvent } from "../shared/events.js";
 import { appendEvent, nextSeq } from "./ledgers.js";
+import { settleSpend } from "./budgets.js";
+import { loadModels } from "./models.js";
 import { createRun, type RunRecord } from "./runs.js";
 import type { OfficeStore } from "./office-store.js";
 import type { Driver } from "./drivers.js";
@@ -47,7 +49,8 @@ export async function pumpQueue(
     if (store.occupants.has(next.deskId)) break;
     pending.shift();
     try {
-      await createRun(store, workspaceDir, makeDriver(), next);
+      const run = await createRun(store, workspaceDir, makeDriver(), next);
+      settleSpend(store.dir, run, loadModels);
     } catch {
       pending.unshift(next);
       break;

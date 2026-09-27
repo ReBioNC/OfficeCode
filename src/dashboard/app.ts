@@ -52,6 +52,8 @@ const queueUl = document.getElementById("queue") as HTMLUListElement;
 const transcript = document.getElementById("transcript") as HTMLDivElement;
 const modelsDiv = document.getElementById("models") as HTMLDivElement;
 const modelsStatus = document.getElementById("modelsStatus") as HTMLParagraphElement;
+const budgetDiv = document.getElementById("budget") as HTMLDivElement;
+const budgetStatus = document.getElementById("budgetStatus") as HTMLParagraphElement;
 const dispatchForm = document.getElementById("dispatch") as HTMLFormElement;
 const dispatchBtn = dispatchForm.querySelector("button") as HTMLButtonElement;
 const REDUCED = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -261,6 +263,8 @@ function connect(): void {
       li.textContent = `${data.run.id} ${data.run.state}`;
     } else if (res.status === 409) {
       li.textContent = `Desk ${deskSel.value} is busy — pick another desk or wait for the current run to finish.`;
+    } else if (res.status === 402) {
+      li.textContent = `Over budget — ${data.error ?? "raise the cap in the Budget panel."}`;
     } else {
       li.textContent = `error: ${data.error ?? res.status}`;
     }
@@ -330,8 +334,39 @@ async function saveSlot(role: string): Promise<void> {
   modelsStatus.textContent = res.ok ? `saved ${role}` : `error: ${((await res.json()) as { error?: string }).error ?? res.status}`;
 }
 
+async function loadBudgetUI(): Promise<void> {
+  const res = await fetch("/api/budgets");
+  const data = (await res.json()) as { config: { dailyUsdCap: number }; spentEstimated: number; remaining: number };
+  budgetDiv.textContent = "";
+  const line = document.createElement("p");
+  line.textContent = `Spent today (est.): $${data.spentEstimated.toFixed(4)} / $${data.config.dailyUsdCap} — remaining $${data.remaining.toFixed(4)}`;
+  budgetDiv.appendChild(line);
+  const label = document.createElement("label");
+  label.textContent = "Daily cap $ ";
+  const inp = document.createElement("input");
+  inp.value = String(data.config.dailyUsdCap);
+  label.appendChild(inp);
+  budgetDiv.appendChild(label);
+  const save = document.createElement("button");
+  save.type = "button";
+  save.textContent = "Save cap";
+  save.addEventListener("click", () => {
+    void (async () => {
+      const r = await fetch("/api/budgets", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ dailyUsdCap: Number(inp.value), rates: (await (await fetch("/api/budgets")).json() as { config: { rates: unknown } }).config.rates }),
+      });
+      budgetStatus.textContent = r.ok ? "cap saved" : `error: ${((await r.json()) as { error?: string }).error ?? r.status}`;
+      await loadBudgetUI();
+    })();
+  });
+  budgetDiv.appendChild(save);
+}
+
 void snapshot().then(() => {
   connect();
   void loadModelsUI();
+  void loadBudgetUI();
   if (!REDUCED) window.setInterval(draw, 400);
 });

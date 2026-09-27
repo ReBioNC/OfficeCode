@@ -21,4 +21,9 @@ describe("dashboard SSE contract", () => {
     const src = fs.readFileSync("src/dashboard/app.ts", "utf8");
     assert.ok(src.includes('fetch("/api/queue"'), "loads queue");
   });
+  it("shows the estimate-labeled budget board", () => {
+    const src = fs.readFileSync("src/dashboard/app.ts", "utf8");
+    assert.ok(src.includes('fetch("/api/budgets"'), "loads budgets");
+    assert.ok(src.includes("est."), "labels spend as estimate");
+  });
 });

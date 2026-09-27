@@ -7,6 +7,8 @@ import { selectDriver } from "./drivers.js";
 import { loadModels, saveModels, detectOpencode, type ModelSlot } from "./models.js";
 import { createRun, getRun, listRuns, setOnSettled } from "./runs.js";
 import { enqueueOrRun, pendingList, pumpQueue } from "./queue.js";
+import { loadBudgets, saveBudgets, spentToday, overBudget, settleSpend, type BudgetsDoc } from "./budgets.js";
+import { loadModels as loadModelSlots } from "./models.js";
 
 const PUBLIC_DIR = path.resolve("dashboard/public");
 
@@ -112,6 +114,11 @@ export async function startServer(workspaceDir: string, port: number): Promise<{
               sendJson(res, 400, { error: "deskId, role, prompt required" });
               return;
             }
+            if (overBudget(store.dir)) {
+              const spent = spentToday(store.dir);
+              sendJson(res, 402, { error: `daily budget cap reached (est. $${spent}). Raise the cap in the Budget panel.` });
+              return;
+            }
             if (!store.office.desks.some((d) => d.id === input.deskId)) {
               sendJson(res, 404, { error: `unknown desk: ${input.deskId}` });
               return;
@@ -129,6 +136,7 @@ export async function startServer(workspaceDir: string, port: number): Promise<{
               sendJson(res, 202, { queued: true, position: outcome.position, deskId: outcome.deskId, role: outcome.role });
               return;
             }
+            settleSpend(store.dir, outcome.run, loadModelSlots);
             broadcast({ runId: outcome.run.id, state: outcome.run.state });
             sendJson(res, 201, { run: outcome.run });
           } catch (err) {
@@ -136,6 +144,26 @@ export async function startServer(workspaceDir: string, port: number): Promise<{
             sendJson(res, code, { error: (err as Error).message });
           }
         })();
+      });
+      return;
+    }
+    if (req.method === "GET" && url.pathname === "/api/budgets") {
+      const config = loadBudgets(store.dir);
+      const spent = spentToday(store.dir);
+      sendJson(res, 200, { config, spentEstimated: spent, remaining: config.dailyUsdCap - spent });
+      return;
+    }
+    if (req.method === "PUT" && url.pathname === "/api/budgets") {
+      let body = "";
+      req.on("data", (c: Buffer) => { body += c.toString("utf8"); });
+      req.on("end", () => {
+        try {
+          const doc = JSON.parse(body) as { dailyUsdCap?: unknown; rates?: unknown };
+          saveBudgets(store.dir, { version: 1, dailyUsdCap: doc.dailyUsdCap as number, rates: doc.rates as BudgetsDoc["rates"] });
+          sendJson(res, 200, loadBudgets(store.dir));
+        } catch (err) {
+          sendJson(res, 400, { error: (err as Error).message });
+        }
       });
       return;
     }
