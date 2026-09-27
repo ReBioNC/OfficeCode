@@ -2,28 +2,34 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 
-describe("dashboard SSE contract", () => {
+// The dashboard is VISUAL ONLY. All control (dispatch, models, budgets)
+// happens from opencode prompts (plugin/commands/*.md). The browser must
+// never mutate server state.
+describe("dashboard visual-only contract", () => {
   it("subscribes to named snapshot and office events", () => {
     const src = fs.readFileSync("src/dashboard/app.ts", "utf8");
     assert.ok(src.includes('addEventListener("snapshot"'), "must subscribe to snapshot event");
     assert.ok(src.includes('addEventListener("office"'), "must subscribe to office event");
   });
-  it("disables dispatch with a friendly note when the desk is busy", () => {
+  it("only reads state, never mutates it", () => {
     const src = fs.readFileSync("src/dashboard/app.ts", "utf8");
-    assert.ok(src.includes("is busy"), "must explain busy desks in plain language");
-  });
-  it("has a models panel that loads and saves slots", () => {
-    const src = fs.readFileSync("src/dashboard/app.ts", "utf8");
-    assert.ok(src.includes('fetch("/api/models"'), "loads models");
-    assert.ok(src.includes('"PUT"'), "saves models");
-  });
-  it("shows the waiting line from the queue endpoint", () => {
-    const src = fs.readFileSync("src/dashboard/app.ts", "utf8");
+    assert.ok(src.includes('fetch("/api/office"'), "loads office");
+    assert.ok(src.includes('fetch("/api/runs"'), "loads runs");
     assert.ok(src.includes('fetch("/api/queue"'), "loads queue");
-  });
-  it("shows the estimate-labeled budget board", () => {
-    const src = fs.readFileSync("src/dashboard/app.ts", "utf8");
     assert.ok(src.includes('fetch("/api/budgets"'), "loads budgets");
-    assert.ok(src.includes("est."), "labels spend as estimate");
+    assert.ok(!src.includes('"PUT"'), "no PUT from dashboard");
+    assert.ok(!src.includes('method: "POST"'), "no POST from dashboard");
+    assert.ok(!src.includes("<form"), "no forms in dashboard code");
+  });
+  it("has no forms in markup", () => {
+    const html = fs.readFileSync("src/dashboard/index.html", "utf8");
+    assert.ok(!html.includes("<form"), "sidebar has no forms");
+    assert.ok(!html.includes("<button"), "sidebar has no buttons");
+    assert.ok(!html.includes("<input"), "sidebar has no inputs");
+  });
+  it("shows role pills and status bubbles like the reference", () => {
+    const src = fs.readFileSync("src/dashboard/app.ts", "utf8");
+    assert.ok(src.includes("ROLE_PILL"), "role pills drawn");
+    assert.ok(src.includes("BUBBLE_TEXT"), "status bubbles drawn");
   });
 });

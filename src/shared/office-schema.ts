@@ -11,6 +11,36 @@ export interface Office {
   desks: Desk[]; hallways: Hallway[]; objects: PlacedObject[]; roster: unknown[];
 }
 
+// Built-in seed so the sidecar boots in ANY project directory, even ones
+// without a .officecode.sample/office.json file.
+export const DEFAULT_OFFICE: Office = {
+  version: 1,
+  building: "HQ",
+  floors: [{ id: "floor-1", name: "Webapp", worktree: null }],
+  rooms: [
+    { id: "room-frontend", floorId: "floor-1", name: "Frontend", color: "blue", paths: ["web/"], maxDesks: 3 },
+    { id: "room-qa", floorId: "floor-1", name: "QA", color: "green", paths: ["web/", "tests/"], maxDesks: 2 },
+    { id: "room-design", floorId: "floor-1", name: "Design", color: "purple", paths: ["design/"], maxDesks: 2 },
+    { id: "room-backend", floorId: "floor-1", name: "Backend", color: "red", paths: ["server/"], maxDesks: 3 },
+    { id: "room-data", floorId: "floor-1", name: "Data", color: "green", paths: ["db/"], maxDesks: 1 },
+  ],
+  desks: [
+    { id: "desk-fe-1", roomId: "room-frontend", label: "FE-1" },
+    { id: "desk-qa-1", roomId: "room-qa", label: "QA-1" },
+    { id: "desk-ui-1", roomId: "room-design", label: "UI-1" },
+    { id: "desk-be-1", roomId: "room-backend", label: "BE-1" },
+    { id: "desk-be-2", roomId: "room-backend", label: "BE-2" },
+    { id: "desk-db-1", roomId: "room-data", label: "DB-1" },
+  ],
+  hallways: [
+    { id: "hall-fe-qa", fromRoomId: "room-frontend", toRoomId: "room-qa", open: true },
+  ],
+  objects: [
+    { id: "obj-printer", roomId: "room-qa", kind: "printer", grants: ["read"] },
+  ],
+  roster: [],
+};
+
 export function validateOffice(doc: unknown): { ok: true } | { ok: false; error: string } {
   if (typeof doc !== "object" || doc === null) return { ok: false, error: "office must be an object" };
   const o = doc as Record<string, unknown>;

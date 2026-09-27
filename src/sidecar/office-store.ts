@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { validateOffice, type Office } from "../shared/office-schema.js";
+import { validateOffice, DEFAULT_OFFICE, type Office } from "../shared/office-schema.js";
 
 export interface OfficeStore {
   dir: string;
@@ -17,11 +17,11 @@ export function loadOffice(workspaceDir: string): OfficeStore {
   fs.mkdirSync(dir, { recursive: true });
   const file = officeFile(dir);
   if (!fs.existsSync(file)) {
-    const sample = fs.readFileSync(
-      path.join(workspaceDir, ".officecode.sample", "office.json"),
-      "utf8",
-    );
-    fs.writeFileSync(file, sample, "utf8");
+    const sampleFile = path.join(workspaceDir, ".officecode.sample", "office.json");
+    const seed = fs.existsSync(sampleFile)
+      ? fs.readFileSync(sampleFile, "utf8")
+      : JSON.stringify(DEFAULT_OFFICE, null, 2);
+    fs.writeFileSync(file, seed, "utf8");
   }
   const doc = JSON.parse(fs.readFileSync(file, "utf8") as string) as unknown;
   const res = validateOffice(doc);

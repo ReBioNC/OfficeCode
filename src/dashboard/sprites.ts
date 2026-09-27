@@ -149,13 +149,108 @@ export const PLANT_PALETTE: Palette = {
   T: POT,
 };
 
+export const PRINTER_MAP: PixelMap = [
+  "..OOOOOOOO..",
+  "..OPPPPPPO..",
+  ".OWWWWWWWWO.",
+  ".OWGGGGGGWO.",
+  ".OWWWWWWWWO.",
+  ".OOOOOOOOOO.",
+  "..OPPPPPPO..",
+  "..OOOOOOOO..",
+];
+
+export const PRINTER_PALETTE: Palette = {
+  O: INK,
+  W: "#9AA0B4",
+  G: "#7FE0C3",
+  P: "#FFFFFF",
+};
+
+export const BOARD_MAP: PixelMap = [
+  "OOOOOOOOOOOOOOOOOOOO",
+  "OWWWWWWWWWWWWWWWWWWO",
+  "OWYYWWGGWWBBWWRRWWWO",
+  "OWYYWWGGWWBBWWRRWWWO",
+  "OWWWWWWWWWWWWWWWWWWO",
+  "OWWWWWTTTTTTTTWWWWWO",
+  "OWWWWWWWWWWWWWWWWWWO",
+  "OOOOOOOOOOOOOOOOOOOO",
+];
+
+export const BOARD_PALETTE: Palette = {
+  O: INK,
+  W: "#F8FAFC",
+  Y: "#F2D24B",
+  G: LEAF,
+  B: "#7FB2E5",
+  R: "#E05C5C",
+  T: "#9AA0B4",
+};
+
+export const RACK_MAP: PixelMap = [
+  "OOOOOOOOOO",
+  "OMMMMMMMMO",
+  "OMGMGRMMMO",
+  "OMMMMMMMMO",
+  "OMRMGMMGMO",
+  "OMMMMMMMMO",
+  "OMGMGRMMMO",
+  "OMMMMMMMMO",
+  "OMRMGMMGMO",
+  "OMMMMMMMMO",
+  "OMGMGRMMMO",
+  "OMMMMMMMMO",
+  "OMMMMMMMMO",
+  "OOOOOOOOOO",
+];
+
+export const RACK_PALETTE: Palette = {
+  O: INK,
+  M: MONITOR,
+  G: SCREEN,
+  R: "#E05C5C",
+};
+
+export const SOFA_MAP: PixelMap = [
+  "OOOOOOOOOOOOOOOOOOOO",
+  "OACCCCCCCCCCCCCCCCAO",
+  "OACCCCCCCCCCCCCCCCAO",
+  "OACCCOOOCCCCOOOCCCAO",
+  "OACCCOOOCCCCOOOCCCAO",
+  "OACCCCCCCCCCCCCCCCAO",
+  "OOOOOOOOOOOOOOOOOOOO",
+];
+
+export const SOFA_PALETTE: Palette = {
+  O: INK,
+  A: "#2F6B4F",
+  C: "#48A06B",
+};
+
+export const TABLE_MAP: PixelMap = [
+  "OOOOOOOOOOOOOOOO",
+  "OWWWWWWWWWWWWWWO",
+  "OWDDDDDDDDDDDDWO",
+  "OWDDDDDDDDDDDDWO",
+  "OWDDDDDDDDDDDDWO",
+  "OWWWWWWWWWWWWWWO",
+  "OOOOOOOOOOOOOOOO",
+];
+
+export const TABLE_PALETTE: Palette = {
+  O: INK,
+  W: WOOD,
+  D: WOOD_DARK,
+};
+
 export function validateMap(map: PixelMap): { ok: true } | { ok: false; error: string } {
   if (map.length === 0) return { ok: false, error: "empty map" };
   const w = map[0].length;
   for (let i = 0; i < map.length; i++) {
     if (map[i].length !== w) return { ok: false, error: `row ${i} width ${map[i].length} != ${w}` };
     for (const ch of map[i]) {
-      if (!".OSHECPWEMGKLT".includes(ch)) return { ok: false, error: `row ${i} unknown pixel '${ch}'` };
+      if (!".OSHECPWEMGKLTDYBRA".includes(ch)) return { ok: false, error: `row ${i} unknown pixel '${ch}'` };
     }
   }
   return { ok: true };

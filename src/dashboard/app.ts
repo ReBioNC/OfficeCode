@@ -1,5 +1,7 @@
 import { roomRect, deskPoint } from "./layout";
 import {
+  BOARD_MAP,
+  BOARD_PALETTE,
   CHAIR_MAP,
   CHAIR_PALETTE,
   CHAR_FRAMES,
@@ -8,7 +10,15 @@ import {
   INK,
   PLANT_MAP,
   PLANT_PALETTE,
+  PRINTER_MAP,
+  PRINTER_PALETTE,
+  RACK_MAP,
+  RACK_PALETTE,
   SCREEN,
+  SOFA_MAP,
+  SOFA_PALETTE,
+  TABLE_MAP,
+  TABLE_PALETTE,
   drawSprite,
   frameForState,
   shirtPalette,
@@ -17,13 +27,19 @@ import {
 
 interface Desk { id: string; roomId: string; label: string }
 interface Room { id: string; name: string; color: string }
-interface OfficeDoc { rooms: Room[]; desks: Desk[] }
-interface Run { id: string; deskId: string; role: string; state: string }
+interface PlacedObject { id: string; roomId: string; kind: string }
+interface OfficeDoc { rooms: Room[]; desks: Desk[]; objects: PlacedObject[] }
+interface Run { id: string; deskId: string; role: string; state: string; prompt: string }
+interface QueueItem { position: number; deskId: string; role: string; prompt: string }
 
-// Pixel-office palette (warm daylight, ink outlines)
+// Warm modern-office palette (2D take on the reference)
 const FLOOR_A = "#DCB47E";
 const FLOOR_B = "#D2A971";
-const WALL_FACE = "#6E5F7E";
+const WALL_FACE = "#8A7B8C";
+const SKY = "#9FD0E8";
+const SKY_DARK = "#7FB2D9";
+const CITY = "#5B6B7C";
+const CITY_LIT = "#F2E6B8";
 const PLATE = "#262033";
 const PAPER = "#FFF6E5";
 const PX = 2;
@@ -35,30 +51,38 @@ const CARPETS: Record<string, string> = {
   purple: "#B79FE5",
 };
 
-const BUBBLES: Record<string, string> = {
-  thinking: "💭",
-  acting: "⌨️",
-  blocked: "❗",
-  delivering: "📦",
-  done: "✅",
+const ROLE_PILL: Record<string, string> = {
+  pm: "#E05C5C",
+  "uiux-designer": "#E08BB8",
+  "frontend-dev": "#4A90D9",
+  "backend-dev": "#9B51E0",
+  "api-dev": "#2FA8A0",
+  "database-dev": "#2F7B4F",
+  devops: "#E08A3C",
+  "qa-engineer": "#27AE60",
+  reviewer: "#C9A227",
+  "docs-writer": "#8A8FA3",
+};
+
+const BUBBLE_TEXT: Record<string, (run: Run) => string | null> = {
+  thinking: () => "Berpikir…",
+  acting: (run) => `Menjalankan: ${run.prompt.slice(0, 30)}`,
+  blocked: () => "Butuh bantuan ❗",
+  delivering: () => "Mengantar 📦",
+  done: () => "Selesai ✅",
 };
 
 const canvas = document.getElementById("floor") as HTMLCanvasElement;
 const ctx = canvas.getContext("2d")!;
 ctx.imageSmoothingEnabled = false;
-const deskSel = document.getElementById("desk") as HTMLSelectElement;
-const runsUl = document.getElementById("runs") as HTMLUListElement;
+const statActive = document.getElementById("statActive") as HTMLSpanElement;
+const statQueue = document.getElementById("statQueue") as HTMLSpanElement;
+const statSpent = document.getElementById("statSpent") as HTMLSpanElement;
 const queueUl = document.getElementById("queue") as HTMLUListElement;
-const transcript = document.getElementById("transcript") as HTMLDivElement;
-const modelsDiv = document.getElementById("models") as HTMLDivElement;
-const modelsStatus = document.getElementById("modelsStatus") as HTMLParagraphElement;
-const budgetDiv = document.getElementById("budget") as HTMLDivElement;
-const budgetStatus = document.getElementById("budgetStatus") as HTMLParagraphElement;
-const dispatchForm = document.getElementById("dispatch") as HTMLFormElement;
-const dispatchBtn = dispatchForm.querySelector("button") as HTMLButtonElement;
+const lastRun = document.getElementById("lastRun") as HTMLParagraphElement;
 const REDUCED = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-let office: OfficeDoc = { rooms: [], desks: [] };
+let office: OfficeDoc = { rooms: [], desks: [], objects: [] };
 let occupants: Record<string, string> = {};
 let runs: Run[] = [];
 
@@ -70,52 +94,22 @@ async function snapshot(): Promise<void> {
   const rr = await fetch("/api/runs");
   runs = ((await rr.json()) as { runs: Run[] }).runs;
   const qr = await fetch("/api/queue");
-  const queue = ((await qr.json()) as { queue: Array<{ position: number; deskId: string; role: string; prompt: string }> }).queue;
+  const queue = ((await qr.json()) as { queue: QueueItem[] }).queue;
+  const br = await fetch("/api/budgets");
+  const budget = (await br.json()) as { spentEstimated: number };
+  const active = runs.filter((r) => !["done", "blocked"].includes(r.state)).length;
+  statActive.textContent = String(active);
+  statQueue.textContent = String(queue.length);
+  statSpent.textContent = `$${budget.spentEstimated.toFixed(4)} (est.)`;
   queueUl.textContent = "";
   for (const q of queue) {
     const li = document.createElement("li");
-    li.textContent = `#${q.position} ${q.role} → ${q.deskId}: ${q.prompt.slice(0, 60)}`;
+    li.textContent = `#${q.position} ${q.role} → ${q.deskId}`;
     queueUl.appendChild(li);
   }
-  deskSel.textContent = "";
-  for (const d of office.desks) {
-    const opt = document.createElement("option");
-    opt.value = d.id;
-    opt.textContent = `${d.label} (${d.id})`;
-    deskSel.appendChild(opt);
-  }
-  refreshBusy();
+  const finished = [...runs].reverse().find((r) => r.state === "done");
+  lastRun.textContent = finished ? `Terakhir selesai: ${finished.role} (${finished.id})` : "Belum ada run selesai.";
   draw();
-}
-
-function occupantOf(deskId: string): Run | undefined {
-  const runId = occupants[deskId];
-  if (!runId) return undefined;
-  return runs.find((r) => r.id === runId);
-}
-
-function refreshBusy(): void {
-  const run = occupantOf(deskSel.value);
-  if (run) {
-    dispatchBtn.disabled = true;
-    dispatchBtn.textContent = `Desk busy (${run.state})…`;
-    runsUl.textContent = "";
-    const li = document.createElement("li");
-    li.textContent = `Desk ${deskSel.value} is busy — ${run.id} (${run.state}). Pick another desk or wait.`;
-    runsUl.appendChild(li);
-  } else {
-    dispatchBtn.disabled = false;
-    dispatchBtn.textContent = "Dispatch";
-  }
-}
-
-function checker(x0: number, y0: number, w: number, h: number, cell: number): void {
-  for (let y = 0; y * cell < h; y++) {
-    for (let x = 0; x * cell < w; x++) {
-      ctx.fillStyle = (x + y) % 2 === 0 ? FLOOR_A : FLOOR_B;
-      ctx.fillRect(snap(x0 + x * cell), snap(y0 + y * cell), cell, cell);
-    }
-  }
 }
 
 function plate(text: string, x: number, y: number): void {
@@ -127,27 +121,93 @@ function plate(text: string, x: number, y: number): void {
   ctx.fillText(text, snap(x + 6), snap(y + 4));
 }
 
+function windows(): void {
+  // sky band with sun, city skyline, and glass mullions
+  ctx.fillStyle = SKY;
+  ctx.fillRect(6, 6, canvas.width - 12, 64);
+  ctx.fillStyle = SKY_DARK;
+  ctx.fillRect(6, 44, canvas.width - 12, 26);
+  ctx.fillStyle = "#F2D24B";
+  ctx.fillRect(canvas.width - 90, 16, 18, 18);
+  const city = [26, 40, 32, 48, 36, 44, 30, 52, 38, 42, 34, 50, 28, 46, 36];
+  let x = 14;
+  for (let i = 0; i < city.length && x < canvas.width - 20; i++) {
+    const h = city[i];
+    ctx.fillStyle = CITY;
+    ctx.fillRect(x, 70 - h, 30, h);
+    ctx.fillStyle = CITY_LIT;
+    for (let wy = 70 - h + 4; wy < 66; wy += 8) {
+      for (let wx = x + 4; wx < x + 26; wx += 8) {
+        if ((wx + wy + i) % 3 === 0) ctx.fillRect(wx, wy, 3, 4);
+      }
+    }
+    x += 34;
+  }
+  ctx.fillStyle = INK;
+  for (let mx = 6; mx <= canvas.width - 6; mx += 60) ctx.fillRect(mx, 6, 3, 64);
+  ctx.fillRect(6, 67, canvas.width - 12, 3);
+  // wall clock on the right
+  const cx = canvas.width - 46;
+  const cy = 38;
+  ctx.fillStyle = PAPER;
+  ctx.beginPath();
+  ctx.arc(cx, cy, 13, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = INK;
+  ctx.fillRect(cx - 1, cy - 9, 2, 10);
+  ctx.fillRect(cx - 1, cy - 1, 7, 2);
+}
+
+function checker(x0: number, y0: number, w: number, h: number, cell: number): void {
+  for (let y = 0; y * cell < h; y++) {
+    for (let x = 0; x * cell < w; x++) {
+      ctx.fillStyle = (x + y) % 2 === 0 ? FLOOR_A : FLOOR_B;
+      ctx.fillRect(snap(x0 + x * cell), snap(y0 + y * cell), cell, cell);
+    }
+  }
+}
+
 function drawRoom(room: Room, i: number, runById: Map<string, Run>, tick: number): void {
   const r = roomRect(i, canvas.width, office.rooms.length);
   const carpet = CARPETS[room.color] ?? "#E8D9B8";
-  ctx.globalAlpha = 0.45;
+  // rug under the room
+  ctx.globalAlpha = 0.35;
   ctx.fillStyle = carpet;
-  ctx.fillRect(snap(r.x), snap(r.y), snap(r.w), snap(r.h));
+  ctx.fillRect(snap(r.x - 6), snap(r.y - 6), snap(r.w + 12), snap(r.h + 12));
   ctx.globalAlpha = 1;
-  // pixel wall: ink outline + face, door gap centered on top edge
+  // thin pixel walls with door gap
   ctx.fillStyle = INK;
-  ctx.fillRect(snap(r.x - 3), snap(r.y - 3), snap(r.w + 6), snap(r.h + 6));
+  ctx.fillRect(snap(r.x - 2), snap(r.y - 2), snap(r.w + 4), 4);
+  ctx.fillRect(snap(r.x - 2), snap(r.y + r.h - 2), snap(r.w + 4), 4);
+  ctx.fillRect(snap(r.x - 2), snap(r.y - 2), 4, snap(r.h + 4));
+  ctx.fillRect(snap(r.x + r.w - 2), snap(r.y - 2), 4, snap(r.h + 4));
   ctx.fillStyle = WALL_FACE;
-  ctx.fillRect(snap(r.x), snap(r.y), snap(r.w), snap(r.h));
-  ctx.fillStyle = carpet;
-  ctx.globalAlpha = 0.45;
-  ctx.fillRect(snap(r.x + 3), snap(r.y + 3), snap(r.w - 6), snap(r.h - 6));
-  ctx.globalAlpha = 1;
-  ctx.fillStyle = WALL_FACE; // door gap repainted as wall opening
-  const doorW = 34;
-  ctx.fillRect(snap(r.x + r.w / 2 - doorW / 2), snap(r.y - 3), doorW, 9);
-  checker(snap(r.x + r.w / 2 - doorW / 2), snap(r.y - 3), doorW, 9, 3);
+  ctx.fillRect(snap(r.x), snap(r.y), snap(r.w), 3);
+  const doorW = 30;
+  checker(snap(r.x + r.w / 2 - doorW / 2), snap(r.y - 2), doorW, 6, 3);
   plate(room.name.toUpperCase(), r.x + 8, r.y + 8);
+
+  // room decor by team
+  if (room.name === "Design") {
+    drawSprite(ctx, BOARD_MAP, BOARD_PALETTE, snap(r.x + r.w - 52), snap(r.y + 26), 1);
+  }
+  if (room.name === "Backend") {
+    drawSprite(ctx, RACK_MAP, RACK_PALETTE, snap(r.x + r.w - 30), snap(r.y + r.h - 40), 1);
+  }
+  // placed objects are real capability grants — draw them
+  office.objects
+    .filter((o) => o.roomId === room.id)
+    .forEach((o, oi) => {
+      const ox = snap(r.x + 10 + oi * 30);
+      const oy = snap(r.y + r.h - 26);
+      if (o.kind === "printer") drawSprite(ctx, PRINTER_MAP, PRINTER_PALETTE, ox, oy, 1);
+      else {
+        ctx.fillStyle = "#A06A35";
+        ctx.fillRect(ox, oy, 20, 14);
+        ctx.fillStyle = INK;
+        ctx.fillRect(ox, oy + 6, 20, 2);
+      }
+    });
 
   office.desks
     .filter((d) => d.roomId === room.id)
@@ -156,16 +216,13 @@ function drawRoom(room: Room, i: number, runById: Map<string, Run>, tick: number
       const runId = occupants[d.id];
       const run = runId ? runById.get(runId) : undefined;
       const state = run?.state ?? "off-duty";
-      // chair
       drawSprite(ctx, CHAIR_MAP, CHAIR_PALETTE, p.x - 8, p.y + 26, PX);
-      // monitor glow while acting
       if (state === "acting") {
         ctx.globalAlpha = 0.55;
         ctx.fillStyle = SCREEN;
         ctx.fillRect(snap(p.x - 18 - 6), snap(p.y - 12 - 6), 48, 40);
         ctx.globalAlpha = 1;
       }
-      // desk (36x24 at PX=2)
       drawSprite(ctx, DESK_MAP, DESK_PALETTE, p.x - 18, p.y - 12, PX);
       ctx.font = "9px 'Courier New', monospace";
       ctx.fillStyle = PAPER;
@@ -175,59 +232,68 @@ function drawRoom(room: Room, i: number, runById: Map<string, Run>, tick: number
         const cx = snap(p.x - 12);
         const cy = snap(p.y + 10);
         drawSprite(ctx, CHAR_FRAMES[frame], shirtPalette(run.role), cx, cy, PX);
-        const bubble = BUBBLES[state];
-        if (bubble) {
-          ctx.font = "13px serif";
-          ctx.fillStyle = PAPER;
-          ctx.fillRect(cx + 20, cy - 16, 20, 18);
-          ctx.fillStyle = INK;
-          ctx.fillRect(cx + 20, cy - 16, 20, 2);
-          ctx.fillText(bubble, cx + 21, cy - 14);
-        }
-        const tag = run.role.slice(0, 12);
-        const tw = ctx.measureText(tag).width + 8;
-        ctx.fillStyle = PLATE;
-        ctx.fillRect(snap(cx + 12 - tw / 2), snap(cy + 30), snap(tw), 14);
-        ctx.fillStyle = PAPER;
+        // name tag + role pill (reference style)
         ctx.font = "9px 'Courier New', monospace";
-        ctx.fillText(tag, snap(cx + 12 - tw / 2 + 4), snap(cy + 32));
+        const pillColor = ROLE_PILL[run.role] ?? "#8A8FA3";
+        const tagW = ctx.measureText(run.role).width + 10;
+        ctx.fillStyle = PLATE;
+        ctx.fillRect(snap(cx + 12 - tagW / 2), snap(cy + 30), snap(tagW), 13);
+        ctx.fillStyle = pillColor;
+        ctx.fillRect(snap(cx + 12 - tagW / 2), snap(cy + 40), snap(tagW), 4);
+        ctx.fillStyle = PAPER;
+        ctx.fillText(run.role, snap(cx + 12 - tagW / 2 + 5), snap(cy + 31));
+        // status bubble
+        const say = BUBBLE_TEXT[state]?.(run) ?? null;
+        if (say) {
+          ctx.font = "10px 'Courier New', monospace";
+          const bw = ctx.measureText(say).width + 12;
+          const bx = snap(Math.min(Math.max(cx - 10, 8), canvas.width - bw - 8));
+          const by = snap(cy - 22);
+          ctx.fillStyle = PAPER;
+          ctx.fillRect(bx, by, snap(bw), 17);
+          ctx.fillStyle = INK;
+          ctx.fillRect(bx, by + 15, snap(bw), 2);
+          ctx.fillText(say, bx + 6, by + 3);
+        }
       }
     });
 }
 
+function lounge(): void {
+  const y = canvas.height - 66;
+  // rug
+  ctx.globalAlpha = 0.5;
+  ctx.fillStyle = "#B79FE5";
+  ctx.fillRect(300, y - 6, 300, 60);
+  ctx.globalAlpha = 1;
+  drawSprite(ctx, SOFA_MAP, SOFA_PALETTE, 350, y + 8, PX);
+  drawSprite(ctx, TABLE_MAP, TABLE_PALETTE, 420, y + 14, PX);
+  drawSprite(ctx, PLANT_MAP, PLANT_PALETTE, 270, y + 10, PX);
+  drawSprite(ctx, PLANT_MAP, PLANT_PALETTE, 600, y + 10, PX);
+  plate("LOUNGE", 306, y - 2);
+  // outbox counter
+  const done = runs.filter((r) => r.state === "done").length;
+  plate(`OUTBOX · ${done}`, 16, y + 18);
+  for (let i = 0; i < Math.min(done, 3); i++) {
+    ctx.fillStyle = "#A06A35";
+    ctx.fillRect(20 + i * 26, y + 40, 22, 14);
+    ctx.fillStyle = INK;
+    ctx.fillRect(20 + i * 26, y + 46, 22, 2);
+  }
+}
+
 function draw(): void {
   const tick = REDUCED ? 0 : Math.floor(Date.now() / 350);
-  checker(0, 0, canvas.width, canvas.height, 12);
-  // building ink border
+  checker(0, 76, canvas.width, canvas.height - 76, 12);
+  windows();
   ctx.fillStyle = INK;
-  ctx.fillRect(0, 0, canvas.width, 6);
   ctx.fillRect(0, canvas.height - 6, canvas.width, 6);
   ctx.fillRect(0, 0, 6, canvas.height);
   ctx.fillRect(canvas.width - 6, 0, 6, canvas.height);
-  plate("OFFICECODE HQ · FLOOR 1", 16, 14);
-
+  plate("OFFICECODE HQ · FLOOR 1", 16, 12);
   const runById = new Map(runs.map((r) => [r.id, r]));
   office.rooms.forEach((room, i) => drawRoom(room, i, runById, tick));
-
-  // plants in bottom corners
-  drawSprite(ctx, PLANT_MAP, PLANT_PALETTE, 16, canvas.height - 52, PX);
-  drawSprite(ctx, PLANT_MAP, PLANT_PALETTE, canvas.width - 32, canvas.height - 52, PX);
-
-  // outbox counter: parcels for finished runs
-  const done = runs.filter((r) => r.state === "done").length;
-  const ox = 16;
-  const oy = canvas.height - 96;
-  ctx.fillStyle = PLATE;
-  ctx.fillRect(ox - 6, oy - 22, 110, 20);
-  ctx.fillStyle = PAPER;
-  ctx.font = "10px 'Courier New', monospace";
-  ctx.fillText(`OUTBOX · ${done}`, ox, oy - 18);
-  for (let i = 0; i < Math.min(done, 3); i++) {
-    ctx.fillStyle = "#A06A35";
-    ctx.fillRect(ox + i * 26, oy, 22, 16);
-    ctx.fillStyle = INK;
-    ctx.fillRect(ox + i * 26, oy + 7, 22, 2);
-  }
+  lounge();
 }
 
 function connect(): void {
@@ -246,127 +312,7 @@ function connect(): void {
   };
 }
 
-(document.getElementById("dispatch") as HTMLFormElement).addEventListener("submit", (e) => {
-  e.preventDefault();
-  const deskId = deskSel.value;
-  const role = (document.getElementById("role") as HTMLInputElement).value;
-  const prompt = (document.getElementById("prompt") as HTMLTextAreaElement).value;
-  void fetch("/api/runs", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ deskId, role, prompt }),
-  }).then(async (res) => {
-    const data = (await res.json()) as { run?: Run; error?: string };
-    runsUl.textContent = "";
-    const li = document.createElement("li");
-    if (res.ok && data.run) {
-      li.textContent = `${data.run.id} ${data.run.state}`;
-    } else if (res.status === 409) {
-      li.textContent = `Desk ${deskSel.value} is busy — pick another desk or wait for the current run to finish.`;
-    } else if (res.status === 402) {
-      li.textContent = `Over budget — ${data.error ?? "raise the cap in the Budget panel."}`;
-    } else {
-      li.textContent = `error: ${data.error ?? res.status}`;
-    }
-    runsUl.appendChild(li);
-    if (data.run) transcript.textContent = `dispatched ${data.run.id}`;
-    await snapshot();
-  });
-});
-
-deskSel.addEventListener("change", () => {
-  refreshBusy();
-});
-
-interface ModelSlot { provider: string; model: string; fallbacks: string[]; weight: number }
-
-async function loadModelsUI(): Promise<void> {
-  const res = await fetch("/api/models");
-  const doc = (await res.json()) as { slots: Record<string, ModelSlot> };
-  modelsDiv.textContent = "";
-  for (const [role, slot] of Object.entries(doc.slots)) {
-    const row = document.createElement("div");
-    const name = document.createElement("strong");
-    name.textContent = role;
-    row.appendChild(name);
-    const mk = (label: string, value: string, key: "provider" | "model" | "fallbacks" | "weight") => {
-      const l = document.createElement("label");
-      l.textContent = ` ${label} `;
-      const inp = document.createElement("input");
-      inp.value = value;
-      inp.placeholder = key === "model" ? "pick a model…" : "";
-      inp.dataset["role"] = role;
-      inp.dataset["key"] = key;
-      l.appendChild(inp);
-      row.appendChild(l);
-    };
-    mk("provider", slot.provider, "provider");
-    mk("model", slot.model, "model");
-    mk("fallbacks", slot.fallbacks.join(", "), "fallbacks");
-    mk("weight", String(slot.weight), "weight");
-    const save = document.createElement("button");
-    save.type = "button";
-    save.textContent = "Save";
-    save.addEventListener("click", () => {
-      void saveSlot(role);
-    });
-    row.appendChild(save);
-    modelsDiv.appendChild(row);
-  }
-}
-
-async function saveSlot(role: string): Promise<void> {
-  const cur = (await (await fetch("/api/models")).json()) as { slots: Record<string, ModelSlot> };
-  const inputs = modelsDiv.querySelectorAll(`input[data-role="${role}"]`);
-  const slot = { ...cur.slots[role] };
-  inputs.forEach((el) => {
-    const inp = el as HTMLInputElement;
-    const key = inp.dataset["key"] as "provider" | "model" | "fallbacks" | "weight";
-    if (key === "fallbacks") slot.fallbacks = inp.value.split(",").map((s) => s.trim()).filter(Boolean);
-    else if (key === "weight") slot.weight = Number(inp.value) || 1;
-    else slot[key] = inp.value;
-  });
-  const res = await fetch("/api/models", {
-    method: "PUT",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ slots: { ...cur.slots, [role]: slot } }),
-  });
-  modelsStatus.textContent = res.ok ? `saved ${role}` : `error: ${((await res.json()) as { error?: string }).error ?? res.status}`;
-}
-
-async function loadBudgetUI(): Promise<void> {
-  const res = await fetch("/api/budgets");
-  const data = (await res.json()) as { config: { dailyUsdCap: number }; spentEstimated: number; remaining: number };
-  budgetDiv.textContent = "";
-  const line = document.createElement("p");
-  line.textContent = `Spent today (est.): $${data.spentEstimated.toFixed(4)} / $${data.config.dailyUsdCap} — remaining $${data.remaining.toFixed(4)}`;
-  budgetDiv.appendChild(line);
-  const label = document.createElement("label");
-  label.textContent = "Daily cap $ ";
-  const inp = document.createElement("input");
-  inp.value = String(data.config.dailyUsdCap);
-  label.appendChild(inp);
-  budgetDiv.appendChild(label);
-  const save = document.createElement("button");
-  save.type = "button";
-  save.textContent = "Save cap";
-  save.addEventListener("click", () => {
-    void (async () => {
-      const r = await fetch("/api/budgets", {
-        method: "PUT",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ dailyUsdCap: Number(inp.value), rates: (await (await fetch("/api/budgets")).json() as { config: { rates: unknown } }).config.rates }),
-      });
-      budgetStatus.textContent = r.ok ? "cap saved" : `error: ${((await r.json()) as { error?: string }).error ?? r.status}`;
-      await loadBudgetUI();
-    })();
-  });
-  budgetDiv.appendChild(save);
-}
-
 void snapshot().then(() => {
   connect();
-  void loadModelsUI();
-  void loadBudgetUI();
   if (!REDUCED) window.setInterval(draw, 400);
 });
