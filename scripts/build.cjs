@@ -17,7 +17,8 @@ run(
     "test/office-store.test.ts test/ledgers.test.ts test/drivers.test.ts " +
     "test/runs.test.ts test/server.test.ts test/layout.test.ts test/xss-contract.test.ts " +
     "--outDir dist-test --module commonjs --target ES2022 --moduleResolution node " +
-    "--strict --sourceMap false --declaration false --types node --lib ES2022,DOM"
+    "--strict --sourceMap false --declaration false --types node --lib ES2022,DOM " +
+    "--esModuleInterop true"
 );
 run("npx esbuild src/dashboard/app.ts --bundle --format=iife --target=es2020 --outfile=dashboard/public/app.js");
 fs.copyFileSync(
