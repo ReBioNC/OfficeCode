@@ -59,9 +59,12 @@ function draw(): void {
 
 function connect(): void {
   const src = new EventSource("/api/events");
-  src.onmessage = () => {
+  src.addEventListener("snapshot", () => {
     void snapshot();
-  };
+  });
+  src.addEventListener("office", () => {
+    void snapshot();
+  });
   src.onerror = () => {
     src.close();
     setTimeout(() => {

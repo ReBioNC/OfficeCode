@@ -54,14 +54,35 @@ export async function startServer(workspaceDir: string, port: number): Promise<{
       return;
     }
     if (req.method === "POST" && url.pathname === "/api/runs") {
+      const MAX_BODY = 1_000_000;
       let body = "";
-      req.on("data", (c: Buffer) => { body += c.toString("utf8"); });
+      let tooLarge = false;
+      req.on("data", (c: Buffer) => {
+        if (!tooLarge) {
+          body += c.toString("utf8");
+          if (body.length > MAX_BODY) tooLarge = true;
+        }
+      });
       req.on("end", () => {
         void (async () => {
           try {
-            const input = JSON.parse(body) as { deskId?: string; role?: string; prompt?: string };
+            if (tooLarge) {
+              sendJson(res, 413, { error: "body too large (max 1MB)" });
+              return;
+            }
+            let input: { deskId?: string; role?: string; prompt?: string };
+            try {
+              input = JSON.parse(body) as { deskId?: string; role?: string; prompt?: string };
+            } catch {
+              sendJson(res, 400, { error: "invalid JSON body" });
+              return;
+            }
             if (!input.deskId || !input.role || !input.prompt) {
               sendJson(res, 400, { error: "deskId, role, prompt required" });
+              return;
+            }
+            if (!store.office.desks.some((d) => d.id === input.deskId)) {
+              sendJson(res, 404, { error: `unknown desk: ${input.deskId}` });
               return;
             }
             const run = await createRun(store, workspaceDir, selectDriver(process.env as Record<string, string>), {

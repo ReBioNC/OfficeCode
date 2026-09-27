@@ -38,4 +38,16 @@ describe("validateOffice", () => {
     };
     assert.equal(validateOffice(bad).ok, false);
   });
+  it("returns ok:false instead of throwing on malformed shapes", () => {
+    assert.doesNotThrow(() => validateOffice({ ...base, rooms: null }));
+    assert.equal(validateOffice({ ...base, rooms: null }).ok, false);
+    assert.equal(validateOffice("nope").ok, false);
+  });
+  it("rejects a room pointing at a missing floor", () => {
+    const bad = {
+      ...base,
+      rooms: [{ id: "r1", floorId: "ghost", name: "Frontend", color: "blue", paths: ["web/"], maxDesks: 2 }],
+    };
+    assert.equal(validateOffice(bad).ok, false);
+  });
 });

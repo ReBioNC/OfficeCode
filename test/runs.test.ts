@@ -4,7 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { loadOffice } from "../src/sidecar/office-store.js";
-import { MockDriver } from "../src/sidecar/drivers.js";
+import { MockDriver, CliDriver } from "../src/sidecar/drivers.js";
 import { createRun, getRun } from "../src/sidecar/runs.js";
 
 let ws: string;
@@ -43,6 +43,7 @@ describe("createRun", () => {
         }),
       /occupied/,
     );
+    assert.equal(store.occupants.get("desk-fe-1"), "run-existing");
   });
 
   it("exactly one of two concurrent dispatches wins the desk", async () => {
@@ -54,5 +55,18 @@ describe("createRun", () => {
     ]);
     const ok = results.filter((r) => r.status === "fulfilled").length;
     assert.equal(ok, 1);
+  });
+
+  it("marks missing CLI runs blocked, frees the desk, writes no outbox", async () => {
+    const store = loadOffice(ws);
+    const run = await createRun(store, ws, new CliDriver("__definitely_not_a_real_binary__", []), {
+      deskId: "desk-fe-1",
+      role: "frontend-dev",
+      prompt: "hi",
+    });
+    assert.equal(run.state, "blocked");
+    assert.match(fs.readFileSync(run.transcriptPath, "utf8"), /missing-cli/);
+    assert.equal(store.occupants.has("desk-fe-1"), false);
+    assert.equal(fs.existsSync(run.outboxDir), false);
   });
 });

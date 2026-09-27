@@ -16,6 +16,7 @@ run(
     "src/dashboard/layout.ts " +
     "test/office-store.test.ts test/ledgers.test.ts test/drivers.test.ts " +
     "test/runs.test.ts test/server.test.ts test/layout.test.ts test/xss-contract.test.ts " +
+    "test/client-contract.test.ts " +
     "--outDir dist-test --module commonjs --target ES2022 --moduleResolution node " +
     "--strict --sourceMap false --declaration false --types node --lib ES2022,DOM " +
     "--esModuleInterop true"
