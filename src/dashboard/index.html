@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>OfficeCode — floor 1</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; display: flex; height: 100vh; }
+    #floor { flex: 2; background: #101828; }
+    #side { flex: 1; padding: 12px; overflow: auto; background: #f8fafc; }
+    #side input, #side select, #side textarea { width: 100%; margin: 4px 0; }
+    #transcript { white-space: pre-wrap; background: #0b1220; color: #e2e8f0; padding: 8px; min-height: 120px; }
+  </style>
+</head>
+<body>
+  <canvas id="floor" width="900" height="520"></canvas>
+  <div id="side">
+    <h1>OfficeCode</h1>
+    <form id="dispatch">
+      <label>Desk <select id="desk" name="desk"></select></label>
+      <label>Role <input id="role" name="role" value="frontend-dev" /></label>
+      <label>Prompt <textarea id="prompt" name="prompt">Say hello from the office</textarea></label>
+      <button type="submit">Dispatch</button>
+    </form>
+    <h2>Runs</h2>
+    <ul id="runs"></ul>
+    <h2>Transcript</h2>
+    <div id="transcript"></div>
+  </div>
+  <script src="/app.js"></script>
+</body>
+</html>
