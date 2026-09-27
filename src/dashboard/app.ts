@@ -49,6 +49,8 @@ ctx.imageSmoothingEnabled = false;
 const deskSel = document.getElementById("desk") as HTMLSelectElement;
 const runsUl = document.getElementById("runs") as HTMLUListElement;
 const transcript = document.getElementById("transcript") as HTMLDivElement;
+const dispatchForm = document.getElementById("dispatch") as HTMLFormElement;
+const dispatchBtn = dispatchForm.querySelector("button") as HTMLButtonElement;
 const REDUCED = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 let office: OfficeDoc = { rooms: [], desks: [] };
@@ -69,7 +71,29 @@ async function snapshot(): Promise<void> {
     opt.textContent = `${d.label} (${d.id})`;
     deskSel.appendChild(opt);
   }
+  refreshBusy();
   draw();
+}
+
+function occupantOf(deskId: string): Run | undefined {
+  const runId = occupants[deskId];
+  if (!runId) return undefined;
+  return runs.find((r) => r.id === runId);
+}
+
+function refreshBusy(): void {
+  const run = occupantOf(deskSel.value);
+  if (run) {
+    dispatchBtn.disabled = true;
+    dispatchBtn.textContent = `Desk busy (${run.state})…`;
+    runsUl.textContent = "";
+    const li = document.createElement("li");
+    li.textContent = `Desk ${deskSel.value} is busy — ${run.id} (${run.state}). Pick another desk or wait.`;
+    runsUl.appendChild(li);
+  } else {
+    dispatchBtn.disabled = false;
+    dispatchBtn.textContent = "Dispatch";
+  }
 }
 
 function checker(x0: number, y0: number, w: number, h: number, cell: number): void {
@@ -222,11 +246,21 @@ function connect(): void {
     const data = (await res.json()) as { run?: Run; error?: string };
     runsUl.textContent = "";
     const li = document.createElement("li");
-    li.textContent = res.ok && data.run ? `${data.run.id} ${data.run.state}` : `error: ${data.error ?? res.status}`;
+    if (res.ok && data.run) {
+      li.textContent = `${data.run.id} ${data.run.state}`;
+    } else if (res.status === 409) {
+      li.textContent = `Desk ${deskSel.value} is busy — pick another desk or wait for the current run to finish.`;
+    } else {
+      li.textContent = `error: ${data.error ?? res.status}`;
+    }
     runsUl.appendChild(li);
     if (data.run) transcript.textContent = `dispatched ${data.run.id}`;
     await snapshot();
   });
+});
+
+deskSel.addEventListener("change", () => {
+  refreshBusy();
 });
 
 void snapshot().then(() => {
