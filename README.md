@@ -1,0 +1,92 @@
+# OfficeCode — Visual Working Agent Orchestrator for OpenCode
+
+Kantor 2D pixel-art yang hidup: setiap karakter adalah **run OpenCode beneran**
+(workspace, transkrip, dan budget sendiri), bukan animasi. Layout = workflow:
+room adalah tim, hallway adalah jalur handoff, benda adalah izin tool.
+
+## Syarat
+
+- Node.js 18+ (disarankan 22)
+- (Opsional) CLI `opencode` di PATH untuk run beneran — tanpa itu tetap bisa
+  jalan pakai driver mock
+
+## Cara menjalankan web
+
+```bash
+npm install          # sekali saja
+npm test             # cek semua sehat (harus 51/51 PASS)
+
+# Mode mock (tanpa API key, tanpa biaya):
+set OFFICECODE_DRIVER=mock && npm run dev        # Windows PowerShell
+OFFICECODE_DRIVER=mock npm run dev               # macOS / Linux
+
+# Mode real (pakai OpenCode asli):
+npm run dev
+```
+
+Lalu buka **http://127.0.0.1:8787** di browser.
+
+> Port bisa diganti: `set PORT=8799 && ...` (Windows) atau
+> `PORT=8799 ...` (macOS/Linux).
+
+## Coba pertama kali (2 menit)
+
+1. Di form kanan, pilih Desk `FE-1`, Role `frontend-dev`, tulis prompt bebas.
+2. Klik **Dispatch** — karakter jalan ke meja, monitor menyala saat kerja,
+   bubble status muncul (💭 ⌨️ ❗ 📦 ✅).
+3. Hasil kerja ada di `output/outbox/<run-id>/`
+   (`manifest.json` + `result.md`).
+4. Jejak lengkap di `.officecode/events.jsonl`,
+   transkrip di `.officecode/transcripts/`.
+
+## Fitur (M2)
+
+| Panel | Fungsi |
+|---|---|
+| Dispatch | Jalankan task ke meja kosong (tombol nonaktif otomatis kalau meja sibuk) |
+| Runs / Transcript | Status run + transkrip terakhir |
+| Models | 10 role (pm, uiux, frontend, backend, api, database, devops, qa, reviewer, docs), masing-masing slot provider/model/fallbacks/bobot sendiri |
+| Queue | Kalau run aktif sudah capai batas (`OFFICECODE_MAX_CONCURRENT`, default 8), dispatch berikutnya antre (202) dan jalan otomatis |
+| Budget | Cap harian USD + tarif per model (bisa diubah); spend selalu **est.** (estimasi, bukan tagihan asli); over cap → 402 |
+
+## API (localhost saja, tanpa secrets)
+
+| Endpoint | Fungsi |
+|---|---|
+| `GET /api/health` | Cek hidup |
+| `GET /api/office` | Layout + siapa di meja mana |
+| `POST /api/runs` | Dispatch `{deskId, role, prompt}` → 201 jalan, 202 antre, 404 meja tak dikenal, 409 sibuk, 402 over budget |
+| `GET /api/runs`, `GET /api/runs/:id` | Daftar / detail run |
+| `GET /api/queue` | Antrean |
+| `GET/PUT /api/models` | Slot model per role |
+| `GET /api/models/opencode` | Baca `opencode.json` workspace (best-effort) |
+| `GET/PUT /api/budgets` | Cap + tarif, spend hari ini (est.) |
+| `GET /api/events` | SSE live (snapshot + event `office`) |
+
+## Struktur proyek
+
+```
+src/shared/     kontrak event + skema office
+src/sidecar/    runtime: office-store, ledgers, drivers, runs, queue,
+                models, budgets, server (HTTP+SSE)
+src/dashboard/  UI Canvas 2D pixel (sprites, layout, app)
+plugin/         10 role agents + slash commands (/office.run, /office.staff)
+test/           51 test node:test
+docs/           PRD, plan M1/M2, INSTALL, PRIVACY
+```
+
+## Troubleshooting
+
+| Gejala | Arti |
+|---|---|
+| `Desk X is busy` / 409 | Meja masih dipakai run aktif — pilih meja lain atau tunggu |
+| `Over budget` / 402 | Cap harian tercapai — naikkan di panel Budget |
+| Run `blocked(missing-cli)` | `opencode` tidak ada di PATH — install OpenCode atau pakai mode mock |
+| Halaman kosong | Pastikan `npm run build` sukses dan buka port yang benar |
+
+## Batasan saat ini
+
+- `POST /api/runs` menunggu run selesai (streaming progresif = M3).
+- Rantai fallback model tersimpan tapi belum auto-switch saat rate-limit (M3).
+- Restart sidecar tidak melanjutkan run (M3); panel Outbox UI juga M3.
+- Semua angka dolar adalah **estimasi** (`est.`).
