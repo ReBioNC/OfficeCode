@@ -49,6 +49,8 @@ ctx.imageSmoothingEnabled = false;
 const deskSel = document.getElementById("desk") as HTMLSelectElement;
 const runsUl = document.getElementById("runs") as HTMLUListElement;
 const transcript = document.getElementById("transcript") as HTMLDivElement;
+const modelsDiv = document.getElementById("models") as HTMLDivElement;
+const modelsStatus = document.getElementById("modelsStatus") as HTMLParagraphElement;
 const dispatchForm = document.getElementById("dispatch") as HTMLFormElement;
 const dispatchBtn = dispatchForm.querySelector("button") as HTMLButtonElement;
 const REDUCED = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -263,7 +265,64 @@ deskSel.addEventListener("change", () => {
   refreshBusy();
 });
 
+interface ModelSlot { provider: string; model: string; fallbacks: string[]; weight: number }
+
+async function loadModelsUI(): Promise<void> {
+  const res = await fetch("/api/models");
+  const doc = (await res.json()) as { slots: Record<string, ModelSlot> };
+  modelsDiv.textContent = "";
+  for (const [role, slot] of Object.entries(doc.slots)) {
+    const row = document.createElement("div");
+    const name = document.createElement("strong");
+    name.textContent = role;
+    row.appendChild(name);
+    const mk = (label: string, value: string, key: "provider" | "model" | "fallbacks" | "weight") => {
+      const l = document.createElement("label");
+      l.textContent = ` ${label} `;
+      const inp = document.createElement("input");
+      inp.value = value;
+      inp.placeholder = key === "model" ? "pick a model…" : "";
+      inp.dataset["role"] = role;
+      inp.dataset["key"] = key;
+      l.appendChild(inp);
+      row.appendChild(l);
+    };
+    mk("provider", slot.provider, "provider");
+    mk("model", slot.model, "model");
+    mk("fallbacks", slot.fallbacks.join(", "), "fallbacks");
+    mk("weight", String(slot.weight), "weight");
+    const save = document.createElement("button");
+    save.type = "button";
+    save.textContent = "Save";
+    save.addEventListener("click", () => {
+      void saveSlot(role);
+    });
+    row.appendChild(save);
+    modelsDiv.appendChild(row);
+  }
+}
+
+async function saveSlot(role: string): Promise<void> {
+  const cur = (await (await fetch("/api/models")).json()) as { slots: Record<string, ModelSlot> };
+  const inputs = modelsDiv.querySelectorAll(`input[data-role="${role}"]`);
+  const slot = { ...cur.slots[role] };
+  inputs.forEach((el) => {
+    const inp = el as HTMLInputElement;
+    const key = inp.dataset["key"] as "provider" | "model" | "fallbacks" | "weight";
+    if (key === "fallbacks") slot.fallbacks = inp.value.split(",").map((s) => s.trim()).filter(Boolean);
+    else if (key === "weight") slot.weight = Number(inp.value) || 1;
+    else slot[key] = inp.value;
+  });
+  const res = await fetch("/api/models", {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ slots: { ...cur.slots, [role]: slot } }),
+  });
+  modelsStatus.textContent = res.ok ? `saved ${role}` : `error: ${((await res.json()) as { error?: string }).error ?? res.status}`;
+}
+
 void snapshot().then(() => {
   connect();
+  void loadModelsUI();
   if (!REDUCED) window.setInterval(draw, 400);
 });
