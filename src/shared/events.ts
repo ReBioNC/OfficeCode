@@ -14,6 +14,7 @@ export type OfficeEventType =
   | "run.state"
   | "run.chunk"
   | "run.finished"
+  | "run.queued"
   | "office.updated";
 
 export interface OfficeEvent {

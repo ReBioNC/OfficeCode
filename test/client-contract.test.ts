@@ -17,4 +17,8 @@ describe("dashboard SSE contract", () => {
     assert.ok(src.includes('fetch("/api/models"'), "loads models");
     assert.ok(src.includes('"PUT"'), "saves models");
   });
+  it("shows the waiting line from the queue endpoint", () => {
+    const src = fs.readFileSync("src/dashboard/app.ts", "utf8");
+    assert.ok(src.includes('fetch("/api/queue"'), "loads queue");
+  });
 });

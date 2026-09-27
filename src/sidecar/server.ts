@@ -5,7 +5,8 @@ import { replay } from "./ledgers.js";
 import { loadOffice } from "./office-store.js";
 import { selectDriver } from "./drivers.js";
 import { loadModels, saveModels, detectOpencode, type ModelSlot } from "./models.js";
-import { createRun, getRun, listRuns } from "./runs.js";
+import { createRun, getRun, listRuns, setOnSettled } from "./runs.js";
+import { enqueueOrRun, pendingList, pumpQueue } from "./queue.js";
 
 const PUBLIC_DIR = path.resolve("dashboard/public");
 
@@ -27,6 +28,9 @@ export async function startServer(workspaceDir: string, port: number): Promise<{
 }> {
   const store = loadOffice(workspaceDir);
   const clients = new Set<http.ServerResponse>();
+  setOnSettled(() => {
+    void pumpQueue(store, workspaceDir, () => selectDriver(process.env as Record<string, string>));
+  });
 
   const broadcast = (payload: unknown) => {
     const line = `event: office\ndata: ${JSON.stringify(payload)}\n\n`;
@@ -112,19 +116,31 @@ export async function startServer(workspaceDir: string, port: number): Promise<{
               sendJson(res, 404, { error: `unknown desk: ${input.deskId}` });
               return;
             }
-            const run = await createRun(store, workspaceDir, selectDriver(process.env as Record<string, string>), {
-              deskId: input.deskId,
-              role: input.role,
-              prompt: input.prompt,
-            });
-            broadcast({ runId: run.id, state: run.state });
-            sendJson(res, 201, { run });
+            const cap = Number(process.env["OFFICECODE_MAX_CONCURRENT"] ?? 8);
+            const outcome = await enqueueOrRun(
+              store,
+              workspaceDir,
+              selectDriver(process.env as Record<string, string>),
+              { deskId: input.deskId, role: input.role, prompt: input.prompt },
+              Number.isFinite(cap) && cap > 0 ? cap : 8,
+            );
+            if (outcome.queued) {
+              broadcast({ queued: true, position: outcome.position, deskId: outcome.deskId });
+              sendJson(res, 202, { queued: true, position: outcome.position, deskId: outcome.deskId, role: outcome.role });
+              return;
+            }
+            broadcast({ runId: outcome.run.id, state: outcome.run.state });
+            sendJson(res, 201, { run: outcome.run });
           } catch (err) {
             const code = (err as Error & { code?: number }).code === 409 ? 409 : 500;
             sendJson(res, code, { error: (err as Error).message });
           }
         })();
       });
+      return;
+    }
+    if (req.method === "GET" && url.pathname === "/api/queue") {
+      sendJson(res, 200, { queue: pendingList().map((q, i) => ({ position: i + 1, deskId: q.deskId, role: q.role, prompt: q.prompt })) });
       return;
     }
     if (req.method === "GET" && url.pathname === "/api/events") {

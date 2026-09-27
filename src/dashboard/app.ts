@@ -48,6 +48,7 @@ const ctx = canvas.getContext("2d")!;
 ctx.imageSmoothingEnabled = false;
 const deskSel = document.getElementById("desk") as HTMLSelectElement;
 const runsUl = document.getElementById("runs") as HTMLUListElement;
+const queueUl = document.getElementById("queue") as HTMLUListElement;
 const transcript = document.getElementById("transcript") as HTMLDivElement;
 const modelsDiv = document.getElementById("models") as HTMLDivElement;
 const modelsStatus = document.getElementById("modelsStatus") as HTMLParagraphElement;
@@ -66,6 +67,14 @@ async function snapshot(): Promise<void> {
   occupants = data.occupants;
   const rr = await fetch("/api/runs");
   runs = ((await rr.json()) as { runs: Run[] }).runs;
+  const qr = await fetch("/api/queue");
+  const queue = ((await qr.json()) as { queue: Array<{ position: number; deskId: string; role: string; prompt: string }> }).queue;
+  queueUl.textContent = "";
+  for (const q of queue) {
+    const li = document.createElement("li");
+    li.textContent = `#${q.position} ${q.role} → ${q.deskId}: ${q.prompt.slice(0, 60)}`;
+    queueUl.appendChild(li);
+  }
   deskSel.textContent = "";
   for (const d of office.desks) {
     const opt = document.createElement("option");

@@ -18,7 +18,11 @@ export interface RunRecord {
 }
 
 const runs = new Map<string, RunRecord>();
-let claim: Promise<void> = Promise.resolve();
+let settled: (() => void) | null = null;
+
+export function setOnSettled(cb: () => void): void {
+  settled = cb;
+}
 
 export function getRun(_store: OfficeStore, id: string): RunRecord | undefined {
   void _store;
@@ -40,21 +44,15 @@ export async function createRun(
   driver: Driver,
   input: { deskId: string; role: string; prompt: string },
 ): Promise<RunRecord> {
-  const ticket = claim.then(() => {
-    if (store.occupants.has(input.deskId)) {
-      const err = new Error(`desk ${input.deskId} is occupied (409)`) as Error & { code: number };
-      err.code = 409;
-      throw err;
-    }
-    const id = `run-${crypto.randomBytes(4).toString("hex")}`;
-    store.occupants.set(input.deskId, id);
-    return id;
-  });
-  claim = ticket.then(
-    () => undefined,
-    () => undefined,
-  );
-  const id = await ticket;
+  // Synchronous check-and-claim: atomic within one tick, so concurrent
+  // dispatches serialize deterministically and occupants.size is exact.
+  if (store.occupants.has(input.deskId)) {
+    const err = new Error(`desk ${input.deskId} is occupied (409)`) as Error & { code: number };
+    err.code = 409;
+    throw err;
+  }
+  const id = `run-${crypto.randomBytes(4).toString("hex")}`;
+  store.occupants.set(input.deskId, id);
 
   const run: RunRecord = {
     id,
@@ -100,5 +98,12 @@ export async function createRun(
     setState(store, run, "done");
   }
   store.occupants.delete(input.deskId);
+  if (settled) {
+    try {
+      settled();
+    } catch {
+      // pump failures must never break run completion
+    }
+  }
   return run;
 }
