@@ -21,25 +21,23 @@
   <canvas id="floor" width="900" height="520"></canvas>
   <div id="side">
     <h1>OfficeCode</h1>
-    <form id="dispatch">
-      <label>Desk <select id="desk" name="desk"></select></label>
-      <label>Role <input id="role" name="role" value="frontend-dev" /></label>
-      <label>Prompt <textarea id="prompt" name="prompt">Say hello from the office</textarea></label>
-      <button type="submit">Dispatch</button>
-    </form>
-    <h2>Runs</h2>
-    <ul id="runs"></ul>
-    <h2>Transcript</h2>
-    <div id="transcript"></div>
-    <h2>Models</h2>
-    <p>One model slot per role — your keys, your choice. Blank = unassigned.</p>
-    <div id="models"></div>
-    <p id="modelsStatus"></p>
-    <h2>Queue</h2>
+    <p>Live view only — semua perintah dari prompt opencode
+      (<code>/office.run</code>, <code>/office.status</code>, …).</p>
+    <h2>Status</h2>
+    <ul>
+      <li>Aktif: <span id="statActive">0</span></li>
+      <li>Antre: <span id="statQueue">0</span></li>
+      <li>Spend hari ini: <span id="statSpent">$0 (est.)</span></li>
+    </ul>
+    <p id="lastRun"></p>
+    <h2>Antrean</h2>
     <ul id="queue"></ul>
-    <h2>Budget</h2>
-    <div id="budget"></div>
-    <p id="budgetStatus"></p>
+    <h2>Legenda</h2>
+    <ul>
+      <li>💭 Berpikir · ⌨️ Menjalankan</li>
+      <li>❗ Butuh bantuan · 📦 Mengantar</li>
+      <li>✅ Selesai · monitor menyala = kerja</li>
+    </ul>
   </div>
   <script src="/app.js"></script>
 </body>

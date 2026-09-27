@@ -15,7 +15,7 @@ run(
     "src/sidecar/drivers.ts src/sidecar/runs.ts src/sidecar/server.ts src/sidecar/models.ts src/sidecar/queue.ts " +
     "src/dashboard/layout.ts src/dashboard/sprites.ts " +
     "test/office-store.test.ts test/ledgers.test.ts test/drivers.test.ts " +
-    "test/sprites.test.ts test/roles.test.ts test/models.test.ts test/queue.test.ts test/budgets.test.ts test/server-m2.test.ts " +
+    "test/sprites.test.ts test/roles.test.ts test/models.test.ts test/queue.test.ts test/budgets.test.ts test/server-m2.test.ts test/commands.test.ts " +
     "test/runs.test.ts test/server.test.ts test/layout.test.ts test/xss-contract.test.ts " +
     "test/client-contract.test.ts " +
     "--outDir dist-test --module commonjs --target ES2022 --moduleResolution node " +

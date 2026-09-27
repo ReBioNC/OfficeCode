@@ -1,8 +1,13 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
+  BOARD_MAP,
   CHAR_FRAMES,
   DESK_MAP,
+  PRINTER_MAP,
+  RACK_MAP,
+  SOFA_MAP,
+  TABLE_MAP,
   frameForState,
   snap,
   validateMap,
@@ -15,6 +20,11 @@ const allMaps: Array<[string, PixelMap]> = [
   ["walkB", CHAR_FRAMES.walkB],
   ["work", CHAR_FRAMES.work],
   ["desk", DESK_MAP],
+  ["printer", PRINTER_MAP],
+  ["board", BOARD_MAP],
+  ["rack", RACK_MAP],
+  ["sofa", SOFA_MAP],
+  ["table", TABLE_MAP],
 ];
 
 describe("sprite maps", () => {

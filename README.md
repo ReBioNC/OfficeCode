@@ -31,9 +31,14 @@ Lalu buka **http://127.0.0.1:8787** di browser.
 
 ## Coba pertama kali (2 menit)
 
-1. Di form kanan, pilih Desk `FE-1`, Role `frontend-dev`, tulis prompt bebas.
-2. Klik **Dispatch** — karakter jalan ke meja, monitor menyala saat kerja,
-   bubble status muncul (💭 ⌨️ ❗ 📦 ✅).
+Dashboard itu **murni visual** — semua perintah lewat prompt opencode
+(`plugin/commands/`):
+
+1. Dispatch dari opencode (lihat `/office.run`):
+   `POST http://127.0.0.1:8787/api/runs` dengan
+   `{"deskId":"desk-fe-1","role":"frontend-dev","prompt":"..."}`.
+2. Lihat karakter jalan ke meja di browser, monitor menyala saat kerja,
+   bubble status muncul (Berpikir… / Menjalankan: … / Selesai ✅).
 3. Hasil kerja ada di `output/outbox/<run-id>/`
    (`manifest.json` + `result.md`).
 4. Jejak lengkap di `.officecode/events.jsonl`,
@@ -41,13 +46,15 @@ Lalu buka **http://127.0.0.1:8787** di browser.
 
 ## Fitur (M2)
 
-| Panel | Fungsi |
+| Area | Fungsi |
 |---|---|
-| Dispatch | Jalankan task ke meja kosong (tombol nonaktif otomatis kalau meja sibuk) |
-| Runs / Transcript | Status run + transkrip terakhir |
-| Models | 10 role (pm, uiux, frontend, backend, api, database, devops, qa, reviewer, docs), masing-masing slot provider/model/fallbacks/bobot sendiri |
-| Queue | Kalau run aktif sudah capai batas (`OFFICECODE_MAX_CONCURRENT`, default 8), dispatch berikutnya antre (202) dan jalan otomatis |
-| Budget | Cap harian USD + tarif per model (bisa diubah); spend selalu **est.** (estimasi, bukan tagihan asli); over cap → 402 |
+| Dashboard | Visual saja: denah, karakter + role pill + bubble, legenda, angka read-only (aktif/antre/spend) |
+| `/office.run` | Dispatch task ke meja kosong |
+| `/office.staff` | Lihat meja bebas + cara staffing |
+| `/office.models` | 10 role (pm, uiux, frontend, backend, api, database, devops, qa, reviewer, docs), masing-masing slot provider/model/fallbacks/bobot sendiri |
+| `/office.queue` | Batas konkurensi (`OFFICECODE_MAX_CONCURRENT`, default 8); lebihnya antre (202) dan jalan otomatis |
+| `/office.budget` | Cap harian USD + tarif per model (bisa diubah); spend selalu **est.** (estimasi, bukan tagihan asli); over cap → 402 |
+| `/office.status` | Status sekilas: rooms, occupants, queue, spend |
 
 ## API (localhost saja, tanpa secrets)
 
