@@ -4,6 +4,7 @@ import path from "node:path";
 import { replay } from "./ledgers.js";
 import { loadOffice } from "./office-store.js";
 import { selectDriver } from "./drivers.js";
+import { loadModels, saveModels, detectOpencode, type ModelSlot } from "./models.js";
 import { createRun, getRun, listRuns } from "./runs.js";
 
 const PUBLIC_DIR = path.resolve("dashboard/public");
@@ -51,6 +52,32 @@ export async function startServer(workspaceDir: string, port: number): Promise<{
       const run = getRun(store, id);
       if (!run) { sendJson(res, 404, { error: "not found" }); return; }
       sendJson(res, 200, { run });
+      return;
+    }
+    if (req.method === "GET" && url.pathname === "/api/models") {
+      sendJson(res, 200, loadModels(store.dir));
+      return;
+    }
+    if (req.method === "GET" && url.pathname === "/api/models/opencode") {
+      sendJson(res, 200, detectOpencode(workspaceDir));
+      return;
+    }
+    if (req.method === "PUT" && url.pathname === "/api/models") {
+      let body = "";
+      req.on("data", (c: Buffer) => { body += c.toString("utf8"); });
+      req.on("end", () => {
+        try {
+          const doc = JSON.parse(body) as { slots?: Record<string, ModelSlot> };
+          if (!doc || typeof doc.slots !== "object") {
+            sendJson(res, 400, { error: "slots object required" });
+            return;
+          }
+          saveModels(store.dir, { version: 1, slots: doc.slots });
+          sendJson(res, 200, loadModels(store.dir));
+        } catch (err) {
+          sendJson(res, 400, { error: (err as Error).message });
+        }
+      });
       return;
     }
     if (req.method === "POST" && url.pathname === "/api/runs") {
