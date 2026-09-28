@@ -33,8 +33,14 @@ export const BASE_PALETTE: Palette = {
 
 const ROLE_SHIRTS: Record<string, string> = {
   "frontend-dev": "#4A90D9",
-  backend: "#9B51E0",
-  qa: "#27AE60",
+  "backend-dev": "#9B51E0",
+  "api-dev": "#2FA8A0",
+  "database-dev": "#2F7B4F",
+  "uiux-designer": "#E08BB8",
+  "qa-engineer": "#27AE60",
+  reviewer: "#C9A227",
+  devops: "#E08A3C",
+  "docs-writer": "#8A8FA3",
   pm: "#E05C5C",
 };
 

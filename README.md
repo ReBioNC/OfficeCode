@@ -14,10 +14,10 @@ room adalah tim, hallway adalah jalur handoff, benda adalah izin tool.
 
 ```bash
 npm install          # sekali saja
-npm test             # cek semua sehat (harus 51/51 PASS)
+npm test             # cek seluruh suite
 
 # Mode mock (tanpa API key, tanpa biaya):
-set OFFICECODE_DRIVER=mock && npm run dev        # Windows PowerShell
+$env:OFFICECODE_DRIVER = "mock"; npm run dev      # Windows PowerShell
 OFFICECODE_DRIVER=mock npm run dev               # macOS / Linux
 
 # Mode real (pakai OpenCode asli):
@@ -67,7 +67,7 @@ Dashboard itu **murni visual** — semua perintah lewat prompt opencode
 
 | Area | Fungsi |
 |---|---|
-| Dashboard | Visual saja: denah, karakter + role pill + bubble, legenda, angka read-only (aktif/antre/spend) |
+| Dashboard | Denah pixel art responsif, panel aktivitas dan antrean, kartu meja agen, angka read-only (aktif/antre/spend) |
 | `/office.run` | Dispatch task ke meja kosong |
 | `/office.staff` | Lihat meja bebas + cara staffing |
 | `/office.models` | 10 role (pm, uiux, frontend, backend, api, database, devops, qa, reviewer, docs), masing-masing slot provider/model/fallbacks/bobot sendiri |

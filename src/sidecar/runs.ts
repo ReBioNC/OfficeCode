@@ -19,9 +19,22 @@ export interface RunRecord {
 
 const runs = new Map<string, RunRecord>();
 let settled: (() => void) | null = null;
+let runUpdate: ((run: RunRecord) => void) | null = null;
 
 export function setOnSettled(cb: () => void): void {
   settled = cb;
+}
+
+export function setOnRunUpdate(cb: (run: RunRecord) => void): void {
+  runUpdate = cb;
+}
+
+function notifyRun(run: RunRecord): void {
+  try {
+    runUpdate?.(run);
+  } catch {
+    // A disconnected observer must not interrupt a real run.
+  }
 }
 
 export function getRun(_store: OfficeStore, id: string): RunRecord | undefined {
@@ -86,6 +99,7 @@ export async function registerMirrorRun(
   };
   runs.set(id, run);
   mirrorBySession.set(input.sessionId, id);
+  notifyRun(run);
   appendEvent(store.dir, makeEvent(nextSeq(store.dir), id, "run.created", { state: "walking", message: `mirror ${input.sessionId}` }));
   fs.mkdirSync(path.dirname(run.transcriptPath), { recursive: true });
   fs.appendFileSync(run.transcriptPath, `# ${id} (mirror ${input.sessionId} @ ${deskId})\n\n> ${run.prompt}\n`, "utf8");
@@ -119,6 +133,7 @@ export async function finishMirrorRun(
   setState(store, run, outcome, message);
   store.occupants.delete(run.deskId);
   mirrorBySession.delete(sessionId);
+  notifyRun(run);
   if (settled) {
     try {
       settled();
@@ -132,6 +147,7 @@ export async function finishMirrorRun(
 function setState(store: OfficeStore, run: RunRecord, state: RunState, message?: string): void {
   run.state = state;
   appendEvent(store.dir, makeEvent(nextSeq(store.dir), run.id, "run.state", { state, message }));
+  notifyRun(run);
 }
 
 export async function createRun(
@@ -161,45 +177,56 @@ export async function createRun(
     exitCode: null,
   };
   runs.set(id, run);
-  appendEvent(store.dir, makeEvent(nextSeq(store.dir), id, "run.created", { state: "walking", message: input.role }));
-  fs.mkdirSync(path.dirname(run.transcriptPath), { recursive: true });
-  fs.appendFileSync(run.transcriptPath, `# ${id} (${input.role} @ ${input.deskId})\n\n> ${input.prompt}\n`, "utf8");
-  setState(store, run, "thinking");
+  try {
+    appendEvent(store.dir, makeEvent(nextSeq(store.dir), id, "run.created", { state: "walking", message: input.role }));
+    notifyRun(run);
+    fs.mkdirSync(path.dirname(run.transcriptPath), { recursive: true });
+    fs.appendFileSync(run.transcriptPath, `# ${id} (${input.role} @ ${input.deskId})\n\n> ${input.prompt}\n`, "utf8");
+    setState(store, run, "thinking");
 
-  let failed = false;
-  const code = await driver.start(input.prompt, (e) => {
-    if (e.kind === "chunk") {
-      if (run.state !== "acting") setState(store, run, "acting");
-      fs.appendFileSync(run.transcriptPath, e.text, "utf8");
-      appendEvent(store.dir, makeEvent(nextSeq(store.dir), id, "run.chunk", { message: e.text.slice(0, 200) }));
-    } else if (e.kind === "error") {
-      failed = true;
-      fs.appendFileSync(run.transcriptPath, `\n[error] ${e.message}\n`, "utf8");
-    }
-  });
+    let failed = false;
+    const code = await driver.start(input.prompt, (e) => {
+      if (e.kind === "chunk") {
+        if (run.state !== "acting") setState(store, run, "acting");
+        fs.appendFileSync(run.transcriptPath, e.text, "utf8");
+        appendEvent(store.dir, makeEvent(nextSeq(store.dir), id, "run.chunk", { message: e.text.slice(0, 200) }));
+      } else if (e.kind === "error") {
+        failed = true;
+        fs.appendFileSync(run.transcriptPath, `\n[error] ${e.message}\n`, "utf8");
+      }
+    });
 
-  run.exitCode = code;
-  if (failed || code !== 0) {
-    setState(store, run, "blocked", code === 127 ? "missing-cli" : `exit ${code}`);
-  } else {
-    setState(store, run, "delivering");
-    fs.mkdirSync(run.outboxDir, { recursive: true });
-    fs.writeFileSync(
-      path.join(run.outboxDir, "manifest.json"),
-      JSON.stringify({ runId: id, role: input.role, desk: input.deskId, prompt: input.prompt }, null, 2),
-      "utf8",
-    );
-    fs.writeFileSync(path.join(run.outboxDir, "result.md"), fs.readFileSync(run.transcriptPath, "utf8"), "utf8");
-    appendEvent(store.dir, makeEvent(nextSeq(store.dir), id, "run.finished", { state: "done" }));
-    setState(store, run, "done");
-  }
-  store.occupants.delete(input.deskId);
-  if (settled) {
-    try {
-      settled();
-    } catch {
-      // pump failures must never break run completion
+    run.exitCode = code;
+    if (failed || code !== 0) {
+      setState(store, run, "blocked", code === 127 ? "missing-cli" : `exit ${code}`);
+    } else {
+      setState(store, run, "delivering");
+      fs.mkdirSync(run.outboxDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(run.outboxDir, "manifest.json"),
+        JSON.stringify({ runId: id, role: input.role, desk: input.deskId, prompt: input.prompt }, null, 2),
+        "utf8",
+      );
+      fs.writeFileSync(path.join(run.outboxDir, "result.md"), fs.readFileSync(run.transcriptPath, "utf8"), "utf8");
+      appendEvent(store.dir, makeEvent(nextSeq(store.dir), id, "run.finished", { state: "done" }));
+      setState(store, run, "done");
+    }
+    return run;
+  } catch (error) {
+    run.exitCode ??= 1;
+    if (run.state !== "blocked" && run.state !== "done") {
+      try { setState(store, run, "blocked", "internal error"); } catch { run.state = "blocked"; }
+    }
+    throw error;
+  } finally {
+    store.occupants.delete(input.deskId);
+    notifyRun(run);
+    if (settled) {
+      try {
+        settled();
+      } catch {
+        // Pump failures must never keep a desk occupied.
+      }
     }
   }
-  return run;
 }

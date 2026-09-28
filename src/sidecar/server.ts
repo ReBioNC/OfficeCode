@@ -5,7 +5,7 @@ import { replay } from "./ledgers.js";
 import { loadOffice } from "./office-store.js";
 import { selectDriver } from "./drivers.js";
 import { loadModels, saveModels, detectOpencode, type ModelSlot } from "./models.js";
-import { createRun, getRun, listRuns, setOnSettled } from "./runs.js";
+import { createRun, getRun, listRuns, setOnRunUpdate, setOnSettled } from "./runs.js";
 import { registerMirrorRun, mirrorEvent, finishMirrorRun } from "./runs.js";
 import { RUN_STATES, type RunState } from "../shared/events.js";
 import { enqueueOrRun, pendingList, pumpQueue } from "./queue.js";
@@ -32,14 +32,16 @@ export async function startServer(workspaceDir: string, port: number): Promise<{
 }> {
   const store = loadOffice(workspaceDir);
   const clients = new Set<http.ServerResponse>();
-  setOnSettled(() => {
-    void pumpQueue(store, workspaceDir, () => selectDriver(process.env as Record<string, string>));
-  });
 
   const broadcast = (payload: unknown) => {
     const line = `event: office\ndata: ${JSON.stringify(payload)}\n\n`;
     for (const res of clients) res.write(line);
   };
+  setOnRunUpdate((run) => broadcast({ runId: run.id, state: run.state }));
+  setOnSettled(() => {
+    void pumpQueue(store, workspaceDir, () => selectDriver(process.env as Record<string, string>))
+      .then(() => broadcast({ queueUpdated: true }));
+  });
 
   const server = http.createServer((req, res) => {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");

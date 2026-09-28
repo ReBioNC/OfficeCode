@@ -25,6 +25,20 @@ function armPump(store: ReturnType<typeof loadOffice>, workspace: string): void 
 }
 
 describe("queue", () => {
+  it("does not queue another task for an occupied desk", async () => {
+    const store = loadOffice(ws);
+    armPump(store, ws);
+    const inFlight = createRun(store, ws, new MockDriver(new Array(20).fill("tick")), {
+      deskId: "desk-fe-1", role: "frontend-dev", prompt: "first",
+    });
+    await assert.rejects(
+      () => enqueueOrRun(store, ws, new MockDriver(["other"]), {
+        deskId: "desk-fe-1", role: "frontend-dev", prompt: "second",
+      }, 1),
+      /occupied or queued/,
+    );
+    await inFlight;
+  });
   it("queues when at cap and pumps exactly once on settle", async () => {
     const store = loadOffice(ws);
     armPump(store, ws);

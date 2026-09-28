@@ -13,10 +13,10 @@ describe("dashboard visual-only contract", () => {
   });
   it("only reads state, never mutates it", () => {
     const src = fs.readFileSync("src/dashboard/app.ts", "utf8");
-    assert.ok(src.includes('fetch("/api/office"'), "loads office");
-    assert.ok(src.includes('fetch("/api/runs"'), "loads runs");
-    assert.ok(src.includes('fetch("/api/queue"'), "loads queue");
-    assert.ok(src.includes('fetch("/api/budgets"'), "loads budgets");
+    for (const route of ["/api/office", "/api/runs", "/api/queue", "/api/budgets"]) {
+      assert.ok(src.includes(`"${route}"`), `loads ${route}`);
+    }
+    assert.ok(src.includes("fetch(path, { cache: \"no-store\" })"), "reads fresh API state");
     assert.ok(!src.includes('"PUT"'), "no PUT from dashboard");
     assert.ok(!src.includes('method: "POST"'), "no POST from dashboard");
     assert.ok(!src.includes("<form"), "no forms in dashboard code");

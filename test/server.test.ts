@@ -112,4 +112,32 @@ describe("server", () => {
     await reader!.cancel();
     assert.ok(buf.includes("event: office"));
   });
+  it("streams in-flight states before the final run state", async () => {
+    const stream = await fetch(`${base}/api/events`);
+    const reader = stream.body?.getReader();
+    assert.ok(reader);
+    const request = fetch(`${base}/api/runs`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ deskId: "desk-ui-1", role: "uiux-designer", prompt: "live states" }),
+    });
+    let buffer = "";
+    try {
+      await Promise.race([
+        (async () => {
+          while (!buffer.includes('"state":"done"')) {
+            const chunk = await reader.read();
+            if (chunk.done) throw new Error("SSE closed early");
+            buffer += new TextDecoder().decode(chunk.value);
+          }
+        })(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("no live states")), 3000)),
+      ]);
+      assert.ok(buffer.indexOf('"state":"thinking"') >= 0);
+      assert.ok(buffer.indexOf('"state":"acting"') > buffer.indexOf('"state":"thinking"'));
+    } finally {
+      await reader.cancel();
+      await request;
+    }
+  });
 });
