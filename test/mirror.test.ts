@@ -41,6 +41,24 @@ describe("mirror", () => {
     assert.match(fs.readFileSync(run.transcriptPath, "utf8"), /edit a\.ts/);
     assert.ok(replay(store.dir).some((e) => e.type === "run.state" && e.state === "acting"));
   });
+  it("retains the session identity, role, and concrete activity across events", async () => {
+    const store = loadOffice(ws);
+    const run = await registerMirrorRun(store, ws, { sessionId: "feature-1", role: "build", prompt: "Improve search" });
+    await mirrorEvent(store, "feature-1", { state: "acting", activity: "web-search", detail: "Searching docs", role: "explore" });
+    assert.equal(run.sessionId, "feature-1");
+    assert.equal(run.role, "explore");
+    assert.equal(run.activity, "web-search");
+    assert.equal(run.detail, "Searching docs");
+    await mirrorEvent(store, "feature-1", { state: "thinking", activity: "thinking" });
+    assert.equal(run.activity, "thinking");
+  });
+  it("accepts more OpenCode sessions than the fixed sample desk count", async () => {
+    const store = loadOffice(ws);
+    for (let index = 0; index < store.office.desks.length + 2; index++) {
+      const run = await registerMirrorRun(store, ws, { sessionId: `overflow-${index}`, role: "build", prompt: "Work" });
+      assert.equal(store.occupants.get(run.deskId), run.id);
+    }
+  });
   it("finishing frees the desk and seals the run done", async () => {
     const store = loadOffice(ws);
     const a = await registerMirrorRun(store, ws, { sessionId: "ses-1", role: "build", prompt: "do" });

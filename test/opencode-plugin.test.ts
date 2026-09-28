@@ -27,10 +27,10 @@ const api = async (p, body) => (await fetch(dashboardUrl + p, body
 for (const a of JSON.parse(actionsJson)) {
   if (a.call === "dispose") { disposeAfter = true; continue; }
   if (a.call === "event") await hooks.event({ event: a.event });
-  else await hooks[a.call](a.input);
+  else await hooks[a.call](a.input, a.output);
 }
 dashboardUrl = toasts.map((t) => t.split(" → ")[1]?.split(" ")[0]).find(Boolean) || dashboardUrl;
-const runs = (await api("/api/runs")).runs.map((r) => ({ id: r.id, state: r.state, deskId: r.deskId }));
+const runs = (await api("/api/runs")).runs.map((r) => ({ id: r.id, state: r.state, deskId: r.deskId, role: r.role, activity: r.activity, detail: r.detail, sessionId: r.sessionId, prompt: r.prompt }));
 const occupants = (await api("/api/office")).occupants;
 const info = await api("/api/health");
 if (disposeAfter) await hooks.dispose();
@@ -39,7 +39,7 @@ console.log("RESULT:" + JSON.stringify({ toasts, runs, occupants, url: dashboard
 
 interface HarnessOut {
   toasts: string[];
-  runs: Array<{ id: string; state: string; deskId: string }>;
+  runs: Array<{ id: string; state: string; deskId: string; role?: string; activity?: string; detail?: string; sessionId?: string; prompt?: string }>;
   occupants: Record<string, string>;
   url: string;
   info: { workspace: string; mirrorOnly: boolean; leaseManaged: boolean; pid: number };
@@ -129,6 +129,33 @@ describe("opencode plugin", () => {
       { call: "tool.execute.before", input: { sessionID: "plug-s1", tool: "bash" } },
     ]);
     assert.ok(nextTurn.runs.some((entry) => entry.id !== run.id && entry.state === "acting"));
+  });
+  it("classifies read, edit, web search, and the active OpenCode agent", async () => {
+    const sid = "plug-activity";
+    const out = await drive([
+      { call: "event", event: { type: "session.created", properties: { info: { id: sid, title: "Implement search" } } } },
+      { call: "chat.message", input: { sessionID: sid, agent: "build" }, output: { message: {}, parts: [] } },
+      { call: "tool.execute.before", input: { sessionID: sid, tool: "read" }, output: { args: { filePath: "src/search.ts" } } },
+    ]);
+    const run = out.runs.find((entry) => entry.sessionId === sid);
+    assert.equal(run?.role, "build");
+    assert.equal(run?.activity, "reading");
+    assert.match(run?.detail ?? "", /search\.ts/);
+    const edited = await drive([{ call: "tool.execute.before", input: { sessionID: sid, tool: "edit" }, output: { args: { filePath: "src/search.ts" } } }]);
+    assert.equal(edited.runs.find((entry) => entry.sessionId === sid)?.activity, "editing");
+    const searched = await drive([{ call: "tool.execute.before", input: { sessionID: sid, tool: "websearch" }, output: { args: { query: "search docs" } } }]);
+    assert.equal(searched.runs.find((entry) => entry.sessionId === sid)?.activity, "web-search");
+  });
+  it("refreshes the feature room title and agent from OpenCode events", async () => {
+    const sid = "plug-title";
+    const out = await drive([
+      { call: "event", event: { type: "session.created", properties: { info: { id: sid, title: "New session" } } } },
+      { call: "event", event: { type: "session.updated", properties: { info: { id: sid, title: "Build search filters" } } } },
+      { call: "event", event: { type: "message.updated", properties: { info: { sessionID: sid, role: "user", agent: "explore" } } } },
+    ]);
+    const run = out.runs.find((entry) => entry.sessionId === sid);
+    assert.equal(run?.prompt, "Build search filters");
+    assert.equal(run?.role, "explore");
   });
   it("never throws when the sidecar is down", async () => {
     const out = await drive(

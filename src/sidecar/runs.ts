@@ -12,6 +12,9 @@ export interface RunRecord {
   role: string;
   prompt: string;
   state: RunState;
+  sessionId?: string;
+  activity?: string;
+  detail?: string;
   transcriptPath: string;
   outboxDir: string;
   exitCode: number | null;
@@ -78,13 +81,15 @@ export async function registerMirrorRun(
   input: { sessionId: string; role: string; prompt: string },
 ): Promise<RunRecord> {
   const existing = getMirrorRun(input.sessionId);
-  if (existing) return existing;
-  const deskId = firstFreeDesk(store);
-  if (!deskId) {
-    const err = new Error("no free desk for mirrored session (409)") as Error & { code: number };
-    err.code = 409;
-    throw err;
+  if (existing) {
+    if (input.prompt && input.prompt !== "OpenCode session") existing.prompt = input.prompt.slice(0, 200);
+    if (input.role && input.role !== "opencode") existing.role = input.role.slice(0, 48);
+    notifyRun(existing);
+    return existing;
   }
+  // Mirrored sessions own virtual rooms in the dashboard. Sample desks are
+  // only a compatibility fallback and must never limit OpenCode sessions.
+  const deskId = firstFreeDesk(store) ?? `session-${crypto.createHash("sha256").update(input.sessionId).digest("hex").slice(0, 12)}`;
   const id = `mirror-${crypto.randomBytes(4).toString("hex")}`;
   store.occupants.set(deskId, id);
   const run: RunRecord = {
@@ -93,6 +98,9 @@ export async function registerMirrorRun(
     role: input.role || "opencode",
     prompt: input.prompt || "opencode session",
     state: "walking",
+    sessionId: input.sessionId,
+    activity: "arriving",
+    detail: "Menyiapkan ruang kerja",
     transcriptPath: path.join(store.dir, "transcripts", `${id}.md`),
     outboxDir: path.join(store.dir, "outbox", id),
     exitCode: null,
@@ -109,11 +117,14 @@ export async function registerMirrorRun(
 export async function mirrorEvent(
   store: OfficeStore,
   sessionId: string,
-  event: { state: RunState; message?: string; prompt?: string },
+  event: { state: RunState; message?: string; prompt?: string; role?: string; activity?: string; detail?: string },
 ): Promise<RunRecord> {
   const run = getMirrorRun(sessionId);
   if (!run) throw notFound(sessionId);
   if (event.prompt) run.prompt = event.prompt;
+  if (event.role) run.role = event.role.slice(0, 48);
+  if (event.activity) run.activity = event.activity;
+  if (event.detail !== undefined) run.detail = event.detail.slice(0, 160);
   if (event.message) {
     fs.appendFileSync(run.transcriptPath, `\n[${run.state}→${event.state}] ${event.message}\n`, "utf8");
   }
@@ -131,6 +142,8 @@ export async function finishMirrorRun(
   if (!run) throw notFound(sessionId);
   appendEvent(store.dir, makeEvent(nextSeq(store.dir), run.id, "run.finished", { state: outcome }));
   setState(store, run, outcome, message);
+  run.activity = outcome;
+  run.detail = outcome === "done" ? "Sesi selesai" : "Sesi terhenti";
   store.occupants.delete(run.deskId);
   mirrorBySession.delete(sessionId);
   notifyRun(run);
