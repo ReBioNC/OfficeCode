@@ -30,6 +30,11 @@ export async function enqueueOrRun(
   input: RunInput,
   cap: number,
 ): Promise<EnqueueResult> {
+  if (store.occupants.has(input.deskId) || pending.some((entry) => entry.deskId === input.deskId)) {
+    const err = new Error(`desk ${input.deskId} is occupied or queued (409)`) as Error & { code: number };
+    err.code = 409;
+    throw err;
+  }
   if (store.occupants.size < cap) {
     const run = await createRun(store, workspaceDir, driver, input);
     return { queued: false, run };

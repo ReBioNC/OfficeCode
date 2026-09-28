@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { loadOffice } from "../src/sidecar/office-store.js";
 import { MockDriver, CliDriver } from "../src/sidecar/drivers.js";
-import { createRun, getRun } from "../src/sidecar/runs.js";
+import { createRun, getRun, listRuns, setOnRunUpdate } from "../src/sidecar/runs.js";
 
 let ws: string;
 beforeEach(() => {
@@ -18,6 +18,20 @@ beforeEach(() => {
 });
 
 describe("createRun", () => {
+  it("publishes live states and desk release to observers", async () => {
+    const store = loadOffice(ws);
+    const states: Array<{ state: string; occupied: boolean }> = [];
+    setOnRunUpdate((run) => states.push({ state: run.state, occupied: store.occupants.has(run.deskId) }));
+    try {
+      await createRun(store, ws, new MockDriver(["first", "second"]), {
+        deskId: "desk-fe-1", role: "frontend-dev", prompt: "Observe me",
+      });
+    } finally {
+      setOnRunUpdate(() => {});
+    }
+    assert.deepEqual([...new Set(states.map((entry) => entry.state))], ["walking", "thinking", "acting", "delivering", "done"]);
+    assert.deepEqual(states.filter((entry) => entry.state === "done").map((entry) => entry.occupied), [true, false]);
+  });
   it("runs mock to done with transcript, outbox, ledger", async () => {
     const store = loadOffice(ws);
     const run = await createRun(store, ws, new MockDriver(["hi"]), {
@@ -68,5 +82,17 @@ describe("createRun", () => {
     assert.match(fs.readFileSync(run.transcriptPath, "utf8"), /missing-cli/);
     assert.equal(store.occupants.has("desk-fe-1"), false);
     assert.equal(fs.existsSync(run.outboxDir), false);
+  });
+  it("releases a desk when a driver throws unexpectedly", async () => {
+    const store = loadOffice(ws);
+    await assert.rejects(
+      () => createRun(store, ws, {
+        name: "throwing",
+        start: async () => { throw new Error("driver crashed"); },
+      }, { deskId: "desk-db-1", role: "database-dev", prompt: "crash test" }),
+      /driver crashed/,
+    );
+    assert.equal(store.occupants.has("desk-db-1"), false);
+    assert.equal(listRuns().find((run) => run.prompt === "crash test")?.state, "blocked");
   });
 });

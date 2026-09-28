@@ -5,14 +5,20 @@ import { replay } from "./ledgers.js";
 import { loadOffice } from "./office-store.js";
 import { selectDriver } from "./drivers.js";
 import { loadModels, saveModels, detectOpencode, type ModelSlot } from "./models.js";
-import { createRun, getRun, listRuns, setOnSettled } from "./runs.js";
+import { createRun, getRun, listRuns, setOnRunUpdate, setOnSettled } from "./runs.js";
 import { registerMirrorRun, mirrorEvent, finishMirrorRun } from "./runs.js";
 import { RUN_STATES, type RunState } from "../shared/events.js";
 import { enqueueOrRun, pendingList, pumpQueue } from "./queue.js";
 import { loadBudgets, saveBudgets, spentToday, overBudget, settleSpend, type BudgetsDoc } from "./budgets.js";
 import { loadModels as loadModelSlots } from "./models.js";
 
-const PUBLIC_DIR = path.resolve("dashboard/public");
+const PUBLIC_DIR = path.join(process.env["OFFICECODE_ROOT"] ?? path.resolve(__dirname, "..", "..", ".."), "dashboard", "public");
+
+export interface LeaseOptions {
+  ttlMs: number;
+  startupGraceMs: number;
+  emptyGraceMs: number;
+}
 
 function sendJson(res: http.ServerResponse, status: number, body: unknown): void {
   res.writeHead(status, { "content-type": "application/json; charset=utf-8" });
@@ -26,25 +32,75 @@ function contentType(file: string): string {
   return "application/octet-stream";
 }
 
-export async function startServer(workspaceDir: string, port: number): Promise<{
+export async function startServer(workspaceDir: string, port: number, options: { lease?: LeaseOptions } = {}): Promise<{
   server: http.Server;
   close: () => Promise<void>;
 }> {
-  const store = loadOffice(workspaceDir);
+  const store = loadOffice(workspaceDir, process.env["OFFICECODE_DATA_DIR"]);
   const clients = new Set<http.ServerResponse>();
-  setOnSettled(() => {
-    void pumpQueue(store, workspaceDir, () => selectDriver(process.env as Record<string, string>));
-  });
+  const leaseManaged = options.lease !== undefined || process.env["OFFICECODE_LEASED"] === "1";
+  const leaseOptions = options.lease ?? { ttlMs: 7_000, startupGraceMs: 12_000, emptyGraceMs: 500 };
+  const leases = new Map<string, number>();
+  let emptySince: number | null = Date.now();
+  let hadLease = false;
+  let leaseTimer: NodeJS.Timeout | undefined;
+  let closing = false;
+
+  const sweepLeases = () => {
+    if (!leaseManaged || closing) return;
+    const now = Date.now();
+    for (const [id, lastSeen] of leases) if (now - lastSeen > leaseOptions.ttlMs) leases.delete(id);
+    if (leases.size > 0) { emptySince = null; return; }
+    emptySince ??= now;
+    const grace = hadLease ? leaseOptions.emptyGraceMs : leaseOptions.startupGraceMs;
+    if (now - emptySince < grace) return;
+    closing = true;
+    if (leaseTimer) clearInterval(leaseTimer);
+    for (const client of clients) client.end();
+    server.closeAllConnections();
+    server.close();
+  };
 
   const broadcast = (payload: unknown) => {
     const line = `event: office\ndata: ${JSON.stringify(payload)}\n\n`;
     for (const res of clients) res.write(line);
   };
+  setOnRunUpdate((run) => broadcast({ runId: run.id, state: run.state }));
+  setOnSettled(() => {
+    void pumpQueue(store, workspaceDir, () => selectDriver(process.env as Record<string, string>))
+      .then(() => broadcast({ queueUpdated: true }));
+  });
 
   const server = http.createServer((req, res) => {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
     if (req.method === "GET" && url.pathname === "/api/health") {
-      sendJson(res, 200, { ok: true, version: 1 });
+      sendJson(res, 200, { ok: true, version: 1, service: "officecode", workspace: path.resolve(workspaceDir), mirrorOnly: process.env["OFFICECODE_MIRROR_ONLY"] === "1", leaseManaged, pid: process.pid });
+      return;
+    }
+    if (url.pathname === "/api/lease" && (req.method === "POST" || req.method === "DELETE")) {
+      if (!leaseManaged) { sendJson(res, 404, { error: "not managed" }); return; }
+      let body = "";
+      req.on("data", (chunk: Buffer) => { if (body.length <= 1024) body += chunk.toString("utf8"); });
+      req.on("end", () => {
+        try {
+          const input = JSON.parse(body) as { id?: unknown };
+          if (body.length > 1024 || typeof input.id !== "string" || !/^[a-f0-9]{32}$/.test(input.id)) {
+            sendJson(res, 400, { error: "invalid lease id" });
+            return;
+          }
+          if (req.method === "POST") {
+            leases.set(input.id, Date.now());
+            hadLease = true;
+            emptySince = null;
+          } else {
+            leases.delete(input.id);
+            if (leases.size === 0) emptySince = Date.now();
+          }
+          sendJson(res, 200, { ok: true, activeLeases: leases.size });
+        } catch {
+          sendJson(res, 400, { error: "invalid JSON body" });
+        }
+      });
       return;
     }
     if (req.method === "GET" && url.pathname === "/api/office") {
@@ -89,6 +145,10 @@ export async function startServer(workspaceDir: string, port: number): Promise<{
       return;
     }
     if (req.method === "POST" && url.pathname === "/api/runs") {
+      if (process.env["OFFICECODE_MIRROR_ONLY"] === "1") {
+        sendJson(res, 403, { error: "Dashboard global mengikuti sesi OpenCode; jalankan tugas dari OpenCode." });
+        return;
+      }
       const MAX_BODY = 1_000_000;
       let body = "";
       let tooLarge = false;
@@ -249,8 +309,15 @@ export async function startServer(workspaceDir: string, port: number): Promise<{
   });
 
   await new Promise<void>((resolve) => server.listen(port, "127.0.0.1", resolve));
+  if (leaseManaged) {
+    leaseTimer = setInterval(sweepLeases, Math.max(50, Math.min(1000, Math.floor(leaseOptions.ttlMs / 4))));
+    leaseTimer.unref();
+  }
   return {
     server,
-    close: () => new Promise((resolve, reject) => server.close((e) => (e ? reject(e) : resolve()))),
+    close: () => new Promise((resolve, reject) => {
+      if (leaseTimer) clearInterval(leaseTimer);
+      server.close((e) => (e ? reject(e) : resolve()));
+    }),
   };
 }

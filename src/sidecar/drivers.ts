@@ -49,8 +49,9 @@ export class CliDriver implements Driver {
       child.stdout?.on("data", (d: Buffer) => onEvent({ kind: "chunk", text: d.toString("utf8") }));
       child.stderr?.on("data", (d: Buffer) => onEvent({ kind: "chunk", text: d.toString("utf8") }));
       child.on("close", (exitCode: number | null) => {
-        onEvent({ kind: "done", code: exitCode ?? 0 });
-        resolve(exitCode ?? 0);
+        const code = exitCode ?? 1;
+        onEvent({ kind: "done", code });
+        resolve(code);
       });
     });
   }

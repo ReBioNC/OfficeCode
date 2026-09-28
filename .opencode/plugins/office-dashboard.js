@@ -1,174 +1,228 @@
-// OfficeCode dashboard plugin for opencode (pure ESM — opencode only
-// invokes ESM `export`ed plugin functions; CJS exports are ignored).
-//
-// - Shows a "view dashboard" toast every time opencode connects.
-// - Auto-starts the OfficeCode sidecar (the 2D office server) if it is down.
-// - Mirrors live opencode sessions/tools onto the office floor as characters.
-//
-// Install (this project): file already lives in .opencode/plugins/.
-// Install (any project): copy this file to ~/.config/opencode/plugins/ and
-//   set OFFICECODE_ROOT to this repo checkout.
-//
-// Env: OFFICECODE_PORT (default 8787), OFFICECODE_ROOT (override repo root),
-//   OFFICECODE_NO_SPAWN=1 (never spawn, tests/CI).
-//
-// The dashboard is strictly optional: every sidecar call is wrapped so a
-// down dashboard NEVER breaks opencode.
-
-import path from "node:path";
+// OpenCode only: mirror its sessions to a separate visual dashboard.
 import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import crypto from "node:crypto";
+import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
-function repoRoot() {
-  if (process.env["OFFICECODE_ROOT"]) return process.env["OFFICECODE_ROOT"];
-  try {
-    return path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-  } catch {
-    return process.cwd();
+const pluginDir = path.dirname(fileURLToPath(import.meta.url));
+const stateRoot = path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), ".local", "share"), "OfficeCode");
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function rootDir() {
+  const config = path.join(pluginDir, "office-dashboard.json");
+  let installed;
+  try { installed = JSON.parse(fs.readFileSync(config, "utf8")).root; } catch { /* project install */ }
+  for (const candidate of [process.env.OFFICECODE_ROOT, installed, path.resolve(pluginDir, "..", "..")]) {
+    if (candidate && fs.existsSync(path.join(candidate, "dist", "src", "sidecar", "index.js"))) return path.resolve(candidate);
   }
+  return null;
 }
 
-function sidecarUrl() {
-  const port = Number(process.env["OFFICECODE_PORT"] ?? 8787);
-  return `http://127.0.0.1:${Number.isFinite(port) && port > 0 ? port : 8787}`;
+function projectKey(workspace) {
+  return crypto.createHash("sha256").update(process.platform === "win32" ? workspace.toLowerCase() : workspace).digest("hex").slice(0, 16);
 }
 
-async function post(url, body) {
-  try {
-    const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), 3000);
-    await fetch(url, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
-      signal: ctrl.signal,
-    });
-    clearTimeout(t);
-  } catch {
-    // dashboard optional — never break opencode
-  }
+function projectState(workspace) {
+  return path.join(stateRoot, "projects", projectKey(workspace));
+}
+
+async function request(url, options = {}, timeout = 2000) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeout);
+  try { return await fetch(url, { ...options, signal: ctrl.signal }); }
+  finally { clearTimeout(timer); }
 }
 
 async function health(url) {
   try {
-    const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), 2000);
-    const res = await fetch(`${url}/api/health`, { signal: ctrl.signal });
-    clearTimeout(t);
-    return res.ok;
-  } catch {
-    return false;
-  }
+    const response = await request(`${url}/api/health`);
+    return response.ok ? await response.json() : null;
+  } catch { return null; }
 }
 
-async function ensureSidecar(url, workspaceDir) {
-  if (await health(url)) return true;
-  if (process.env["OFFICECODE_NO_SPAWN"] === "1") return false;
-  const entry = path.join(repoRoot(), "dist", "src", "sidecar", "index.js");
-  if (!fs.existsSync(entry)) return false;
+function matches(info, workspace) {
+  return info?.service === "officecode" && info.workspace === workspace && info.mirrorOnly === true && info.leaseManaged === true;
+}
+
+async function updateLease(url, id, method) {
   try {
-    const { spawn } = await import("node:child_process");
-    const child = spawn(process.execPath, [entry], {
-      detached: true,
-      stdio: "ignore",
-      env: {
-        ...process.env,
-        PORT: String(new URL(url).port || 8787),
-        OFFICECODE_WS: workspaceDir,
-      },
-    });
-    child.unref();
-  } catch {
-    return false;
-  }
-  for (let i = 0; i < 10; i++) {
-    await new Promise((r) => setTimeout(r, 300));
-    if (await health(url)) return true;
-  }
-  return false;
+    const response = await request(`${url}/api/lease`, {
+      method, headers: { "content-type": "application/json" }, body: JSON.stringify({ id }),
+    }, 1500);
+    return response.ok;
+  } catch { return false; }
 }
 
-function sessionIdOf(obj) {
-  if (!obj || typeof obj !== "object") return null;
-  const p = obj.properties ?? obj;
-  return p.sessionID ?? p.sessionId ?? p.session_id ?? p.id ?? null;
+async function post(url, route, body) {
+  if (!url) return false;
+  try {
+    const response = await request(`${url}${route}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }, 3000);
+    return response.ok;
+  } catch { return false; /* dashboard must never interrupt OpenCode */ }
+}
+
+function saveConnection(workspace, url) {
+  try {
+    const dir = projectState(workspace);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "connection.json"), JSON.stringify({ workspace, url, updatedAt: Date.now() }), "utf8");
+  } catch { /* optional */ }
+}
+
+async function findOrStart(workspace) {
+  const root = rootDir();
+  if (!root) return null;
+  const entry = path.join(root, "dist", "src", "sidecar", "index.js");
+  const key = projectKey(workspace);
+  const explicit = Number(process.env.OFFICECODE_PORT);
+  const base = Number.isInteger(explicit) && explicit > 0 && explicit < 65520 ? explicit : 8787 + parseInt(key.slice(0, 4), 16) % 1000;
+  for (let offset = 0; offset < 20 && base + offset < 65536; offset++) {
+    const port = base + offset;
+    const url = `http://127.0.0.1:${port}`;
+    const existing = await health(url);
+    if (matches(existing, workspace)) { saveConnection(workspace, url); return url; }
+    if (existing) continue;
+    if (process.env.OFFICECODE_NO_SPAWN === "1") continue;
+    try {
+      const child = spawn(process.env.OFFICECODE_NODE || "node", [entry], {
+        cwd: root, detached: true, stdio: "ignore", windowsHide: true,
+        env: { ...process.env, PORT: String(port), OFFICECODE_ROOT: root, OFFICECODE_WS: workspace,
+          OFFICECODE_DATA_DIR: projectState(workspace), OFFICECODE_MIRROR_ONLY: "1", OFFICECODE_LEASED: "1" },
+      });
+      child.on("error", () => {});
+      child.unref();
+    } catch { return null; }
+    for (let attempt = 0; attempt < 12; attempt++) {
+      await sleep(250);
+      const info = await health(url);
+      if (matches(info, workspace)) { saveConnection(workspace, url); return url; }
+      if (info) break;
+    }
+  }
+  return null;
+}
+
+function sessionIdOf(value) {
+  const p = value?.properties ?? value;
+  return p?.sessionID ?? p?.sessionId ?? p?.session_id ?? p?.info?.id ?? p?.id ?? null;
 }
 
 async function toast(client, message) {
-  try {
-    await client.tui.showToast({ body: { message, variant: "info" } });
-  } catch {
-    // TUI not attached (e.g. `opencode run`) — stay silent
-  }
+  try { await client.tui.showToast({ body: { message, variant: "info" } }); }
+  catch { /* no TUI in opencode run */ }
 }
 
 export const OfficeDashboardPlugin = async ({ client, directory }) => {
-  const url = sidecarUrl();
-  const workspace = directory ?? process.cwd();
-  let sidecarOk = false;
-  let spawnTried = false;
+  const workspace = path.resolve(directory || process.cwd());
+  const registrations = globalThis[Symbol.for("officecode.plugin.registrations")] ??= new Set();
+  if (registrations.has(workspace)) return {};
+  registrations.add(workspace);
+  let url = null;
+  let pending = null;
+  let heartbeat = null;
+  let disposed = false;
+  const leaseId = crypto.randomBytes(16).toString("hex");
+  const activeSessions = new Set();
 
-  async function ensureOnce() {
-    if (sidecarOk) return true;
-    if (await health(url)) {
-      sidecarOk = true;
-      return true;
-    }
-    if (spawnTried) return false;
-    spawnTried = true;
-    sidecarOk = await ensureSidecar(url, workspace);
-    return sidecarOk;
+  function startHeartbeat() {
+    if (heartbeat) return;
+    heartbeat = setInterval(() => {
+      if (disposed || !url) return;
+      const current = url;
+      void updateLease(current, leaseId, "POST").then((ok) => {
+        if (!ok && !disposed && url === current) { url = null; void ensure().catch(() => {}); }
+      });
+    }, 2_000);
+    heartbeat.unref?.();
   }
 
+  async function ensure() {
+    if (disposed) return null;
+    if (url && matches(await health(url), workspace)) return url;
+    if (!pending) pending = (async () => {
+      const found = await findOrStart(workspace);
+      if (!found || !await updateLease(found, leaseId, "POST")) return null;
+      if (disposed) { await updateLease(found, leaseId, "DELETE"); return null; }
+      startHeartbeat();
+      return found;
+    })().finally(() => { pending = null; });
+    url = await pending;
+    return url;
+  }
+
+  async function beginSession(sid, prompt = "OpenCode session") {
+    if (!sid || activeSessions.has(sid)) return;
+    if (await post(await ensure(), "/api/mirror/session", { sessionId: sid, role: "opencode", prompt })) activeSessions.add(sid);
+  }
+
+  // The headless server may never emit server.connected. Start when OpenCode loads the plugin.
+  void ensure().catch(() => {});
+
   return {
+    dispose: async () => {
+      disposed = true;
+      if (heartbeat) clearInterval(heartbeat);
+      if (pending) await pending.catch(() => {});
+      const lastUrl = url;
+      url = null;
+      registrations.delete(workspace);
+      if (lastUrl) await updateLease(lastUrl, leaseId, "DELETE");
+    },
     event: async ({ event }) => {
       if (!event || typeof event.type !== "string") return;
       if (event.type === "server.connected") {
-        const ok = await ensureOnce();
-        await toast(
-          client,
-          ok
-            ? `🏢 Office dashboard → ${url}`
-            : `🏢 Office dashboard → ${url} (sidecar belum jalan — npm run dev)`,
-        );
+        const current = await ensure();
+        await toast(client, current ? `🏢 Office dashboard → ${current} · /dashboard` : "🏢 Office dashboard belum tersedia · cek instalasi Node.js/OfficeCode");
       }
       if (event.type === "session.created") {
-        await ensureOnce();
         const sid = sessionIdOf(event);
-        if (!sid) return;
-        const agent = event.properties?.agent ?? event.properties?.agentName ?? "opencode";
-        const title = event.properties?.title ?? "opencode session";
-        await post(`${url}/api/mirror/session`, { sessionId: sid, role: String(agent), prompt: String(title) });
+        await beginSession(sid, String(event.properties?.info?.title ?? event.properties?.title ?? "OpenCode session"));
       }
-      if (event.type === "session.idle" || event.type === "session.deleted") {
-        const sid = sessionIdOf(event);
-        if (sid) await post(`${url}/api/mirror/finish`, { sessionId: sid, outcome: "done" });
+      if (event.type === "session.status" && event.properties?.status?.type === "busy") {
+        await beginSession(sessionIdOf(event));
       }
-      if (event.type === "session.error") {
+      if (event.type === "session.idle" || event.type === "session.deleted" || event.type === "session.error") {
         const sid = sessionIdOf(event);
-        if (sid) await post(`${url}/api/mirror/finish`, { sessionId: sid, outcome: "blocked", message: "session error" });
+        if (sid) {
+          await post(await ensure(), "/api/mirror/finish", { sessionId: sid,
+            outcome: event.type === "session.error" ? "blocked" : "done" });
+          activeSessions.delete(sid);
+        }
+      }
+      if (event.type === "permission.updated" || event.type === "permission.asked") {
+        const sid = sessionIdOf(event);
+        if (sid) {
+          await beginSession(sid);
+          await post(await ensure(), "/api/mirror/event", { sessionId: sid, state: "waiting-approval", message: "menunggu approval" });
+        }
+      }
+      if (event.type === "permission.replied") {
+        const sid = sessionIdOf(event);
+        if (sid) {
+          await beginSession(sid);
+          await post(await ensure(), "/api/mirror/event", { sessionId: sid, state: "thinking" });
+        }
       }
     },
     "tool.execute.before": async (input) => {
       const sid = sessionIdOf(input);
-      if (!sid) return;
-      const tool = input.tool ?? input.name ?? "tool";
-      await post(`${url}/api/mirror/event`, { sessionId: sid, state: "acting", message: String(tool) });
+      if (sid) {
+        await beginSession(sid);
+        await post(await ensure(), "/api/mirror/event", { sessionId: sid, state: "acting", message: String(input.tool ?? input.name ?? "tool") });
+      }
     },
     "tool.execute.after": async (input) => {
       const sid = sessionIdOf(input);
-      if (!sid) return;
-      await post(`${url}/api/mirror/event`, { sessionId: sid, state: "thinking" });
+      if (sid) await post(await ensure(), "/api/mirror/event", { sessionId: sid, state: "thinking" });
     },
-    "permission.asked": async (input) => {
+    "permission.ask": async (input) => {
       const sid = sessionIdOf(input);
-      if (!sid) return;
-      await post(`${url}/api/mirror/event`, { sessionId: sid, state: "blocked", message: "menunggu approval" });
-    },
-    "permission.replied": async (input) => {
-      const sid = sessionIdOf(input);
-      if (!sid) return;
-      await post(`${url}/api/mirror/event`, { sessionId: sid, state: "thinking" });
+      if (sid) {
+        await beginSession(sid);
+        await post(await ensure(), "/api/mirror/event", { sessionId: sid, state: "waiting-approval", message: "menunggu approval" });
+      }
     },
   };
 };

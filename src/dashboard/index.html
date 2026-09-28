@@ -1,44 +1,108 @@
 <!doctype html>
-<html lang="en">
+<html lang="id">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>OfficeCode — floor 1</title>
+  <meta name="theme-color" content="#1b1720" />
+  <title>OfficeCode — Live office</title>
   <style>
-    :root { --ink: #262033; --paper: #F5EFE2; --accent: #4A90D9; }
-    body { font-family: 'Courier New', monospace; margin: 0; display: flex; height: 100vh; background: var(--ink); color: var(--ink); }
-    #floor { flex: 2; background: #DCB47E; image-rendering: pixelated; }
-    #side { flex: 1; padding: 14px; overflow: auto; background: var(--paper); border-left: 4px solid var(--ink); }
-    #side h1, #side h2 { letter-spacing: 1px; }
-    #side input, #side select, #side textarea { width: 100%; margin: 4px 0; font-family: inherit; border: 3px solid var(--ink); background: #FFFDF6; padding: 4px; box-sizing: border-box; }
-    #side button { font-family: inherit; font-weight: bold; border: 3px solid var(--ink); background: var(--accent); color: #fff; padding: 6px 12px; box-shadow: 3px 3px 0 var(--ink); cursor: pointer; }
-    #side button:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--ink); }
-    #runs { list-style: square; padding-left: 20px; }
-    #transcript { white-space: pre-wrap; background: #262033; color: #FFF6E5; padding: 8px; min-height: 120px; border: 3px solid var(--ink); }
+    :root { color-scheme: light; --ink:#27232b; --night:#1b1720; --paper:#f4f0e6; --light:#fffdf5; --line:#cfc6b4; --muted:#756e70; --sage:#708f81; --red:#bc6865; font-family:"Trebuchet MS",Arial,sans-serif; }
+    * { box-sizing:border-box; }
+    body { margin:0; min-width:320px; background:var(--night); color:var(--ink); }
+    .app { display:grid; grid-template-columns:minmax(0,1.78fr) minmax(350px,.98fr); grid-template-rows:minmax(0,1fr) 126px; height:100dvh; min-height:620px; overflow:hidden; }
+    .floor-panel { min-width:0; min-height:0; display:flex; flex-direction:column; background:var(--night); }
+    .floor-header { display:flex; align-items:center; justify-content:space-between; gap:16px; min-height:70px; padding:13px 24px; color:var(--light); border-bottom:1px solid #39313b; }
+    .eyebrow,.floor-meta,.metric-label,.run-state,.queue-number,.crew-meta { font:700 10px "Courier New",monospace; letter-spacing:.08em; text-transform:uppercase; }
+    .eyebrow { color:#c9b792; margin:0 0 4px; }
+    h1,h2,h3,p { margin-top:0; }
+    h1 { margin-bottom:0; font-size:clamp(20px,2vw,28px); line-height:1; letter-spacing:-.04em; }
+    h1 span { color:#d7b471; }
+    .floor-meta { color:#bfb5bb; white-space:nowrap; }
+    .floor-stage { flex:1; min-height:0; display:grid; place-items:center; padding:18px 20px; }
+    #floor { display:block; width:100%; height:100%; object-fit:contain; image-rendering:pixelated; }
+    .floor-footer { display:flex; align-items:center; justify-content:space-between; gap:12px; min-height:40px; padding:0 24px; color:#bfb5bb; border-top:1px solid #39313b; font:11px "Courier New",monospace; }
+    .floor-footer strong { color:#e8d3a9; }
+    .command-center { display:flex; flex-direction:column; min-width:0; min-height:0; background:var(--paper); border-left:4px solid #e4d8c5; box-shadow:inset 1px 0 var(--ink); }
+    .command-header { padding:18px 20px 16px; border-bottom:3px double var(--line); background:#f8f4e9; }
+    .command-title { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
+    .command-title h2 { margin:0 0 6px; font-size:19px; line-height:1; letter-spacing:-.05em; }
+    .command-subtitle { margin:0; color:var(--muted); font-size:12px; line-height:1.4; }
+    .view-tag { flex:none; border:1px solid #9d927f; background:#eee5d1; padding:4px 6px; font:700 9px "Courier New",monospace; letter-spacing:.06em; }
+    .connection { display:inline-flex; align-items:center; gap:7px; margin-top:11px; font:700 11px "Courier New",monospace; color:#436a54; }
+    .connection::before { content:""; width:7px; height:7px; background:#5c9b6b; box-shadow:0 0 0 2px #d8e5d8; }
+    .connection[data-state="offline"] { color:#985d53; }
+    .connection[data-state="offline"]::before { background:var(--red); box-shadow:0 0 0 2px #eed9d3; }
+    .metrics { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); border-bottom:1px solid var(--line); }
+    .metric { min-width:0; padding:14px 14px 12px; border-right:1px solid var(--line); }
+    .metric:last-child { border-right:0; }
+    .metric-label { display:block; color:var(--muted); margin-bottom:8px; }
+    .metric-value { display:block; font:700 23px "Courier New",monospace; line-height:1; overflow-wrap:anywhere; }
+    .metric-value.money { font-size:17px; }
+    .metric-unit { display:block; margin-top:5px; color:var(--muted); font:10px "Courier New",monospace; }
+    .center-scroll { min-height:0; flex:1; overflow-y:auto; scrollbar-color:#baa98b transparent; }
+    .panel-section { padding:16px 20px; border-bottom:1px solid var(--line); }
+    .section-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:11px; }
+    .section-heading h3 { margin:0; font-size:12px; letter-spacing:.07em; text-transform:uppercase; }
+    .section-heading span { color:var(--muted); font:10px "Courier New",monospace; }
+    .activity-list,.queue-list,.crew-list { margin:0; padding:0; list-style:none; }
+    .activity-list { display:grid; gap:8px; }
+    .activity-item { padding:10px 11px; background:var(--light); border:1px solid #d9cfbd; border-left:4px solid var(--sage); }
+    .activity-item[data-state="blocked"] { border-left-color:var(--red); }
+    .activity-item[data-state="done"] { border-left-color:#a39a85; }
+    .activity-top { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:5px; }
+    .activity-role { font-size:12px; font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .run-state { color:#537360; white-space:nowrap; }
+    .activity-item[data-state="blocked"] .run-state { color:#a05952; }
+    .activity-item[data-state="done"] .run-state { color:#726b65; }
+    .activity-prompt { margin:0; color:#5d5757; font:11px/1.4 "Courier New",monospace; overflow-wrap:anywhere; }
+    .empty { margin:0; padding:12px; border:1px dashed #c9bea9; color:var(--muted); font:11px/1.5 "Courier New",monospace; }
+    .queue-list { display:grid; gap:1px; background:#d9cfbd; border:1px solid #d9cfbd; }
+    .queue-list:empty { display:none; }
+    .queue-item { display:flex; gap:10px; padding:9px 10px; background:var(--light); font-size:11px; }
+    .queue-number { color:#997b3e; }
+    .guide { background:#eae1ce; }
+    .guide p { margin:0 0 9px; color:#5e5651; font-size:11px; line-height:1.5; }
+    .command-code { display:flex; flex-wrap:wrap; gap:6px; }
+    .command-code code { border:1px solid #c6b99f; background:#f9f4e9; padding:5px 7px; font:11px "Courier New",monospace; }
+    .crew { grid-column:1 / -1; min-width:0; display:flex; align-items:stretch; background:#e9dfcd; border-top:5px solid var(--night); }
+    .crew-heading { flex:0 0 126px; padding:15px 12px 12px 18px; border-right:1px solid #bfb29f; }
+    .crew-heading h2 { margin:2px 0 6px; font-size:14px; line-height:1.1; text-transform:uppercase; }
+    .crew-heading p { margin:0; color:var(--muted); font:10px/1.4 "Courier New",monospace; }
+    .crew-list { display:flex; flex:1; gap:7px; min-width:0; overflow-x:auto; padding:8px; scrollbar-color:#b5a68b transparent; }
+    .crew-card { position:relative; display:flex; align-items:center; gap:9px; flex:1 0 147px; max-width:220px; min-width:0; padding:9px; background:#fffaf0; border:1px solid #bbad98; box-shadow:2px 2px 0 #c6bba9; }
+    .crew-card::after { content:""; position:absolute; inset:auto 0 0; height:3px; background:var(--room-color,#9faca0); }
+    .crew-avatar { flex:none; display:grid; place-items:center; width:39px; height:47px; background:#dce4da; border:1px solid #aaad9f; image-rendering:pixelated; }
+    .crew-avatar canvas { width:30px; height:35px; image-rendering:pixelated; }
+    .crew-avatar.empty-avatar { color:#857f78; font:20px "Courier New",monospace; }
+    .crew-copy { min-width:0; }
+    .crew-name { display:block; margin-bottom:4px; font-size:11px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .crew-meta { display:block; color:var(--muted); font-size:9px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .crew-status { display:block; margin-top:6px; font:10px "Courier New",monospace; color:#4e765a; }
+    .crew-card[data-state="blocked"] .crew-status { color:#a05952; }
+    .crew-card[data-state="free"] .crew-status { color:#726b65; }
+    :focus-visible { outline:3px solid #4a90d9; outline-offset:3px; }
+    @media (max-width:960px) { .app { display:flex; flex-direction:column; height:auto; min-height:100dvh; overflow:visible; } .floor-stage { height:min(65vw,600px); min-height:250px; } .command-center { border-left:0; border-top:4px solid #e4d8c5; box-shadow:none; } .center-scroll { overflow:visible; } .crew { order:2; min-height:126px; } }
+    @media (max-width:540px) { .floor-header { padding:12px 15px; } .floor-meta { font-size:8px; } .floor-stage { display:block; padding:8px; height:440px; overflow-x:auto; overflow-y:hidden; } #floor { width:720px; height:420px; max-width:none; } .floor-footer { padding:0 15px; font-size:9px; } .metric { padding:12px 10px; } .metric-value { font-size:19px; } .metric-value.money { font-size:14px; } .crew-heading { flex-basis:100px; padding-left:10px; } }
   </style>
 </head>
 <body>
-  <canvas id="floor" width="900" height="520"></canvas>
-  <div id="side">
-    <h1>OfficeCode</h1>
-    <p>Live view only — semua perintah dari prompt opencode
-      (<code>/office.run</code>, <code>/office.status</code>, …).</p>
-    <h2>Status</h2>
-    <ul>
-      <li>Aktif: <span id="statActive">0</span></li>
-      <li>Antre: <span id="statQueue">0</span></li>
-      <li>Spend hari ini: <span id="statSpent">$0 (est.)</span></li>
-    </ul>
-    <p id="lastRun"></p>
-    <h2>Antrean</h2>
-    <ul id="queue"></ul>
-    <h2>Legenda</h2>
-    <ul>
-      <li>💭 Berpikir · ⌨️ Menjalankan</li>
-      <li>❗ Butuh bantuan · 📦 Mengantar</li>
-      <li>✅ Selesai · monitor menyala = kerja</li>
-    </ul>
+  <div class="app">
+    <main class="floor-panel" aria-label="Denah kantor live">
+      <header class="floor-header"><div><p class="eyebrow">Live office / lantai 01</p><h1>Office<span>Code</span> HQ</h1></div><span id="floorMeta" class="floor-meta">Memuat denah…</span></header>
+      <div class="floor-stage"><canvas id="floor" width="960" height="560" role="img" aria-label="Denah kantor dengan ruang, meja, dan status agen live"></canvas></div>
+      <div class="floor-footer"><span>Denah mengikuti ruang dan meja yang aktif</span><strong id="lastSync">Menunggu sinkronisasi</strong></div>
+    </main>
+    <aside class="command-center" aria-label="Pusat informasi kantor">
+      <header class="command-header"><div class="command-title"><div><h2>Command center</h2><p class="command-subtitle">Pantau kerja agen dari satu tempat.</p></div><span class="view-tag">LIVE VIEW</span></div><span id="connection" class="connection" data-state="offline" role="status">Menghubungkan…</span></header>
+      <div class="metrics" aria-label="Ringkasan kantor"><div class="metric"><span class="metric-label">Aktif</span><span id="statActive" class="metric-value">—</span><span class="metric-unit">agen bekerja</span></div><div class="metric"><span class="metric-label">Antre</span><span id="statQueue" class="metric-value">—</span><span class="metric-unit">tugas menunggu</span></div><div class="metric"><span class="metric-label">Spend</span><span id="statSpent" class="metric-value money">—</span><span class="metric-unit">USD hari ini · est.</span></div></div>
+      <div class="center-scroll">
+        <section class="panel-section" aria-labelledby="activityTitle"><div class="section-heading"><h3 id="activityTitle">Aktivitas terbaru</h3><span id="activityCount">0 run</span></div><ul id="runs" class="activity-list" aria-live="polite"><li class="empty">Belum ada aktivitas. Jalankan tugas dari OpenCode.</li></ul></section>
+        <section class="panel-section" aria-labelledby="queueTitle"><div class="section-heading"><h3 id="queueTitle">Antrean</h3><span id="queueCount">0 tugas</span></div><ul id="queue" class="queue-list" aria-live="polite"></ul><p id="queueEmpty" class="empty">Tidak ada tugas menunggu.</p></section>
+        <section class="panel-section guide" aria-labelledby="guideTitle"><div class="section-heading"><h3 id="guideTitle">Dari OpenCode</h3><span>Perintah</span></div><p>Kirim tugas dan lihat status melalui prompt OpenCode. Denah ini menampilkan keadaan runtime yang terverifikasi.</p><div class="command-code"><code>/office.run</code><code>/office.status</code><code>/office.queue</code></div></section>
+      </div>
+    </aside>
+    <section class="crew" aria-labelledby="crewTitle"><div class="crew-heading"><span class="eyebrow">Crew deck</span><h2 id="crewTitle">Meja agen</h2><p id="crewCount">Memuat…</p></div><ul id="crew" class="crew-list" aria-live="polite"></ul></section>
   </div>
-  <script src="/app.js"></script>
+  <script src="/app.js" defer></script>
 </body>
 </html>

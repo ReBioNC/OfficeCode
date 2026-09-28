@@ -1,118 +1,107 @@
-# OfficeCode — Visual Working Agent Orchestrator for OpenCode
+# OfficeCode
 
-Kantor 2D pixel-art yang hidup: setiap karakter adalah **run OpenCode beneran**
-(workspace, transkrip, dan budget sendiri), bukan animasi. Layout = workflow:
-room adalah tim, hallway adalah jalur handoff, benda adalah izin tool.
+OfficeCode shows [OpenCode](https://opencode.ai/) session activity as a pixel-art office in your browser. Its global plugin mirrors sessions, tool activity, and permission requests to a local dashboard. **OpenCode still selects and runs every model**; the dashboard does not run models on its own.
 
-## Syarat
+## Requirements
 
-- Node.js 18+ (disarankan 22)
-- (Opsional) CLI `opencode` di PATH untuk run beneran — tanpa itu tetap bisa
-  jalan pakai driver mock
+- The OpenCode CLI must be installed and the `opencode` command must be available in your terminal. This integration has been tested with OpenCode 1.18.33.
+- Node.js 18 or newer and npm. Node.js 22 or newer is recommended.
+- Git to clone and update this repository.
 
-## Cara menjalankan web
+The installation steps below have been tested on Windows. The scripts use cross-platform Node.js paths, but macOS and Linux have not been tested directly.
+
+## Install as a global OpenCode plugin
+
+Run these commands in PowerShell or another terminal:
 
 ```bash
-npm install          # sekali saja
-npm test             # cek semua sehat (harus 51/51 PASS)
+git clone https://github.com/ReBioNC/OfficeCode.git
+cd OfficeCode
+npm ci
+npm run install:opencode
+```
 
-# Mode mock (tanpa API key, tanpa biaya):
-set OFFICECODE_DRIVER=mock && npm run dev        # Windows PowerShell
-OFFICECODE_DRIVER=mock npm run dev               # macOS / Linux
+`install:opencode` builds the dashboard and installs the plugin and `/dashboard` command in OpenCode's global configuration directory (`~/.config/opencode/`). If a destination file already exists, the installer saves a `.bak` copy. **Keep the OfficeCode checkout in place after installation**: the global plugin uses build files from that directory.
 
-# Mode real (pakai OpenCode asli):
+Close and reopen OpenCode after installing. You do not need to run `npm run dev` or set `OFFICECODE_DRIVER` when using the global plugin.
+
+## Use it in any project
+
+Open a terminal in the project you want to monitor, then start OpenCode:
+
+```bash
+cd /path/to/your/project
+opencode
+```
+
+When OpenCode loads the project, the plugin starts the dashboard server automatically. An OpenCode toast shows its local URL. Run `/dashboard` in OpenCode to see the URL and status again, then open the URL in your browser. The port can differ between projects; use the URL from the toast or `/dashboard` rather than assuming port `8787`.
+
+`/dashboard` only displays information. The global dashboard is a visual view: `POST /api/runs` is disabled in plugin mode, so tasks and models run through OpenCode.
+
+The dashboard stops when OpenCode closes. If OpenCode exits unexpectedly, its lease expires and the dashboard normally stops about 7–8 seconds after the last heartbeat. If another OpenCode window is still using the same project, the dashboard stays online until the last window closes.
+
+## File locations
+
+| System | Global plugin and command | Per-project dashboard data |
+|---|---|---|
+| Windows | `%USERPROFILE%\.config\opencode\plugins\office-dashboard.js` and `commands\dashboard.md` | `%LOCALAPPDATA%\OfficeCode\projects\` |
+| macOS / Linux | `~/.config/opencode/plugins/office-dashboard.js` and `commands/dashboard.md` | `~/.local/share/OfficeCode/projects/` |
+
+If `XDG_CONFIG_HOME` is set, the installer uses `$XDG_CONFIG_HOME/opencode/`. Dashboard data may include session titles, tool names, and OpenCode activity history. The server listens only on `127.0.0.1`; the dashboard does not store API keys or contact model providers. See [docs/PRIVACY.md](docs/PRIVACY.md) for details.
+
+## Update
+
+To get the latest OfficeCode changes and reinstall the global plugin:
+
+```bash
+cd /path/to/OfficeCode
+git pull
+npm ci
+npm run install:opencode
+```
+
+Updating the OpenCode application does not normally require reinstalling OfficeCode. A future OpenCode release may change its plugin API and require an OfficeCode update. After updating OpenCode, reopen it and check `/dashboard`.
+
+## Disable or uninstall
+
+Close OpenCode first. To temporarily disable the global plugin, rename `office-dashboard.js` in the global plugin directory to `office-dashboard.js.disabled`, then reopen OpenCode. To uninstall it completely, remove that plugin file, `office-dashboard.json` in the same directory, and `commands/dashboard.md`. If the installer created `.bak` files from a previous installation, restore them if you still need them.
+
+This repository also contains a project-level plugin at `.opencode/plugins/office-dashboard.js`. When opening the OfficeCode repository itself, disable that file too if you want to use OpenCode without the dashboard.
+
+## Local development
+
+This mode is separate from the global plugin. To run the server manually without calling a model:
+
+```powershell
+# Windows PowerShell
+$env:OFFICECODE_DRIVER = "mock"
 npm run dev
 ```
 
-Lalu buka **http://127.0.0.1:8787** di browser.
-
-> Port bisa diganti: `set PORT=8799 && ...` (Windows) atau
-> `PORT=8799 ...` (macOS/Linux).
-
-## Pakai dari opencode (TUI)
-
-Buka opencode di repo ini — plugin project langsung aktif:
-
-1. Setiap connect, muncul toast `🏢 Office dashboard → http://127.0.0.1:8787`.
-   Klik/buka URL itu di browser untuk visual live.
-2. Kalau sidecar belum jalan, plugin **menyalakannya otomatis**
-   (butuh hasil `npm run build` dulu). Tidak perlu terminal kedua.
-3. Setiap prompt dan tool yang berjalan di opencode muncul sebagai karakter
-   di lantai (meja auto-assign, state live: walking → acting → done).
-   Approve permission yang pending = bubble `Butuh bantuan ❗`.
-4. Command `/dashboard` di opencode menampilkan URL + status sekilas.
-
-Untuk project lain: copy `.opencode/plugins/office-dashboard.js` ke
-`~/.config/opencode/plugins/` dan set `OFFICECODE_ROOT` ke checkout repo ini.
-Env: `OFFICECODE_PORT` (default 8787), `OFFICECODE_NO_SPAWN=1` (jangan
-auto-start). Dashboard tidak pernah merusak opencode — kalau sidecar mati,
-semua mirror gagal diam-diam.
-
-## Coba pertama kali (2 menit)
-
-Dashboard itu **murni visual** — semua perintah lewat prompt opencode
-(`plugin/commands/`):
-
-1. Dispatch dari opencode (lihat `/office.run`):
-   `POST http://127.0.0.1:8787/api/runs` dengan
-   `{"deskId":"desk-fe-1","role":"frontend-dev","prompt":"..."}`.
-2. Lihat karakter jalan ke meja di browser, monitor menyala saat kerja,
-   bubble status muncul (Berpikir… / Menjalankan: … / Selesai ✅).
-3. Hasil kerja ada di `output/outbox/<run-id>/`
-   (`manifest.json` + `result.md`).
-4. Jejak lengkap di `.officecode/events.jsonl`,
-   transkrip di `.officecode/transcripts/`.
-
-## Fitur (M2)
-
-| Area | Fungsi |
-|---|---|
-| Dashboard | Visual saja: denah, karakter + role pill + bubble, legenda, angka read-only (aktif/antre/spend) |
-| `/office.run` | Dispatch task ke meja kosong |
-| `/office.staff` | Lihat meja bebas + cara staffing |
-| `/office.models` | 10 role (pm, uiux, frontend, backend, api, database, devops, qa, reviewer, docs), masing-masing slot provider/model/fallbacks/bobot sendiri |
-| `/office.queue` | Batas konkurensi (`OFFICECODE_MAX_CONCURRENT`, default 8); lebihnya antre (202) dan jalan otomatis |
-| `/office.budget` | Cap harian USD + tarif per model (bisa diubah); spend selalu **est.** (estimasi, bukan tagihan asli); over cap → 402 |
-| `/office.status` | Status sekilas: rooms, occupants, queue, spend |
-
-## API (localhost saja, tanpa secrets)
-
-| Endpoint | Fungsi |
-|---|---|
-| `GET /api/health` | Cek hidup |
-| `GET /api/office` | Layout + siapa di meja mana |
-| `POST /api/runs` | Dispatch `{deskId, role, prompt}` → 201 jalan, 202 antre, 404 meja tak dikenal, 409 sibuk, 402 over budget |
-| `GET /api/runs`, `GET /api/runs/:id` | Daftar / detail run |
-| `GET /api/queue` | Antrean |
-| `GET/PUT /api/models` | Slot model per role |
-| `GET /api/models/opencode` | Baca `opencode.json` workspace (best-effort) |
-| `GET/PUT /api/budgets` | Cap + tarif, spend hari ini (est.) |
-| `GET /api/events` | SSE live (snapshot + event `office`) |
-
-## Struktur proyek
-
+```bash
+# macOS / Linux
+OFFICECODE_DRIVER=mock npm run dev
 ```
-src/shared/     kontrak event + skema office
-src/sidecar/    runtime: office-store, ledgers, drivers, runs, queue,
-                models, budgets, server (HTTP+SSE)
-src/dashboard/  UI Canvas 2D pixel (sprites, layout, app)
-plugin/         10 role agents + slash commands (/office.run, /office.staff)
-test/           51 test node:test
-docs/           PRD, plan M1/M2, INSTALL, PRIVACY
-```
+
+Open `http://127.0.0.1:8787` and press `Ctrl+C` to stop the manual server. A server started with `npm run dev` **does not** follow the OpenCode lifecycle. Run `npm test` to build the project and execute its test suite.
 
 ## Troubleshooting
 
-| Gejala | Arti |
+| Symptom | What to do |
 |---|---|
-| `Desk X is busy` / 409 | Meja masih dipakai run aktif — pilih meja lain atau tunggu |
-| `Over budget` / 402 | Cap harian tercapai — naikkan di panel Budget |
-| Run `blocked(missing-cli)` | `opencode` tidak ada di PATH — install OpenCode atau pakai mode mock |
-| Halaman kosong | Pastikan `npm run build` sukses dan buka port yang benar |
+| `/dashboard` is not recognized | Run `npm run install:opencode`, then reopen OpenCode. |
+| The toast does not show a URL | Check that Node.js is on `PATH`, the OfficeCode checkout has not moved, and `npm run build` succeeds. |
+| An old URL no longer opens | Start OpenCode from the same project directory; the dashboard starts when the plugin loads. |
+| The port is not `8787` | This is normal. The plugin selects another port when needed; use the URL from the toast or `/dashboard`. |
+| The server stays online after OpenCode closes | Check `GET /api/health`. An older sidecar created before lease support (without `leaseManaged`) must be stopped manually once. |
 
-## Batasan saat ini
+## Project layout
 
-- `POST /api/runs` menunggu run selesai (streaming progresif = M3).
-- Rantai fallback model tersimpan tapi belum auto-switch saat rate-limit (M3).
-- Restart sidecar tidak melanjutkan run (M3); panel Outbox UI juga M3.
-- Semua angka dolar adalah **estimasi** (`est.`).
+| Directory | Purpose |
+|---|---|
+| `src/sidecar/` | Local HTTP server, office state, and mirror API |
+| `src/dashboard/` | Pixel-art Canvas UI |
+| `.opencode/plugins/` | OpenCode plugin source |
+| `.opencode/commands/` | Project-level `/dashboard` command |
+| `scripts/` | Build scripts, global installer, and URL helper |
+| `test/` | Node.js tests |
