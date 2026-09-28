@@ -29,24 +29,36 @@ Lalu buka **http://127.0.0.1:8787** di browser.
 > Port bisa diganti: `set PORT=8799 && ...` (Windows) atau
 > `PORT=8799 ...` (macOS/Linux).
 
-## Pakai dari opencode (TUI)
+## Plugin global OpenCode
 
-Buka opencode di repo ini — plugin project langsung aktif:
+Jalankan sekali dari repo OfficeCode:
 
-1. Setiap connect, muncul toast `🏢 Office dashboard → http://127.0.0.1:8787`.
-   Klik/buka URL itu di browser untuk visual live.
-2. Kalau sidecar belum jalan, plugin **menyalakannya otomatis**
-   (butuh hasil `npm run build` dulu). Tidak perlu terminal kedua.
-3. Setiap prompt dan tool yang berjalan di opencode muncul sebagai karakter
-   di lantai (meja auto-assign, state live: walking → acting → done).
-   Approve permission yang pending = bubble `Butuh bantuan ❗`.
-4. Command `/dashboard` di opencode menampilkan URL + status sekilas.
+```powershell
+npm install
+npm run install:opencode
+```
 
-Untuk project lain: copy `.opencode/plugins/office-dashboard.js` ke
-`~/.config/opencode/plugins/` dan set `OFFICECODE_ROOT` ke checkout repo ini.
-Env: `OFFICECODE_PORT` (default 8787), `OFFICECODE_NO_SPAWN=1` (jangan
-auto-start). Dashboard tidak pernah merusak opencode — kalau sidecar mati,
-semua mirror gagal diam-diam.
+Instalasi menyalin plugin dan `/dashboard` ke `~/.config/opencode/`, serta
+menyimpan lokasi repo OfficeCode untuk aset visual. Repo ini perlu tetap ada.
+Buka ulang OpenCode di proyek mana pun. Saat OpenCode terhubung, sidecar Node
+menyala otomatis, lalu toast menampilkan URL dashboard proyek tersebut. Ketik
+`/dashboard` untuk melihat URL dan status lagi. Buka URL di browser; OpenCode
+1.18 belum menyediakan panel Canvas kustom di samping context.
+
+Saat OpenCode ditutup, plugin melepas koneksinya dan sidecar ikut berhenti.
+Jika proses OpenCode terhenti mendadak, sidecar berhenti sendiri sekitar 7–8
+detik setelah heartbeat terakhir. Bila proyek yang sama masih terbuka di jendela
+OpenCode lain, sidecar tetap hidup sampai jendela terakhir ditutup.
+
+Setiap proyek mendapat state di `%LOCALAPPDATA%/OfficeCode/projects/` dan port
+sendiri ketika port dasar telah dipakai. Dashboard global hanya mencerminkan
+sesi, tool, dan izin dari OpenCode. `POST /api/runs` ditolak, sehingga semua
+model tetap dipilih dan dijalankan oleh OpenCode. `OFFICECODE_DRIVER=mock` dan
+`npm run dev` tidak diperlukan untuk penggunaan plugin global.
+
+Opsional: `OFFICECODE_PORT` menentukan port awal, `OFFICECODE_NODE` menentukan
+binary Node, dan `OFFICECODE_NO_SPAWN=1` mematikan auto-start. Bila sidecar
+tidak tersedia, OpenCode tetap berjalan.
 
 ## Coba pertama kali (2 menit)
 

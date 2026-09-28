@@ -3,6 +3,7 @@ export const RUN_STATES = [
   "walking",
   "thinking",
   "acting",
+  "waiting-approval",
   "delivering",
   "done",
   "blocked",

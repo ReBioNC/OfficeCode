@@ -12,8 +12,8 @@ export function officeFile(dir: string): string {
   return path.join(dir, "office.json");
 }
 
-export function loadOffice(workspaceDir: string): OfficeStore {
-  const dir = path.join(workspaceDir, ".officecode");
+export function loadOffice(workspaceDir: string, dataDir?: string): OfficeStore {
+  const dir = dataDir ?? path.join(workspaceDir, ".officecode");
   fs.mkdirSync(dir, { recursive: true });
   const file = officeFile(dir);
   if (!fs.existsSync(file)) {

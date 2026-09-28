@@ -93,8 +93,8 @@ export async function registerMirrorRun(
     role: input.role || "opencode",
     prompt: input.prompt || "opencode session",
     state: "walking",
-    transcriptPath: path.join(workspaceDir, ".officecode", "transcripts", `${id}.md`),
-    outboxDir: path.join(workspaceDir, "output", "outbox", id),
+    transcriptPath: path.join(store.dir, "transcripts", `${id}.md`),
+    outboxDir: path.join(store.dir, "outbox", id),
     exitCode: null,
   };
   runs.set(id, run);
