@@ -1,7 +1,7 @@
 import { deskPoint, roomRect, type Rect } from "./layout";
 import {
   BOARD_MAP, BOARD_PALETTE, CHAIR_MAP, CHAIR_PALETTE, CHAR_FRAMES,
-  DESK_MAP, DESK_PALETTE, INK, PLANT_MAP, PLANT_PALETTE,
+  COMPUTER_MAP, COMPUTER_PALETTE, DESK_MAP, DESK_PALETTE, INK, PLANT_MAP, PLANT_PALETTE,
   PRINTER_MAP, PRINTER_PALETTE, RACK_MAP, RACK_PALETTE,
   SOFA_MAP, SOFA_PALETTE, TABLE_MAP, TABLE_PALETTE,
   agentPalette, drawSprite, frameForState, shirtPalette, snap,
@@ -471,6 +471,7 @@ function drawRoom(room: Room, index: number, runById: Map<string, Run>, tick: nu
     const run = runId ? runById.get(runId) : undefined;
     drawSprite(ctx, CHAIR_MAP, CHAIR_PALETTE, snap(point.x - 8), snap(point.y + 19), 2);
     drawSprite(ctx, DESK_MAP, DESK_PALETTE, snap(point.x - 18), snap(point.y - 12), 2);
+    drawSprite(ctx, COMPUTER_MAP, COMPUTER_PALETTE, snap(point.x - 14), snap(point.y - 24), 2);
     if (run?.state === "acting") {
       ctx.fillStyle = "#b3f2ea";
       ctx.fillRect(snap(point.x - 9), snap(point.y - 3), 18, 8);
@@ -540,16 +541,15 @@ function officeDesk(x: number, y: number, active = false, tick = 0): void {
   ctx.fillStyle = "#202341"; ctx.fillRect(x + 6, y + 7, 54, 38);
   drawSprite(ctx, CHAIR_MAP, CHAIR_PALETTE, x + 15, y + 39, 3);
   drawSprite(ctx, DESK_MAP, DESK_PALETTE, x, y, 3);
+  drawSprite(ctx, COMPUTER_MAP, COMPUTER_PALETTE, x + 6, y - 18, 3);
   ctx.fillStyle = "#e8a08e";
   ctx.fillRect(x + 6, y + 6, 8, 2); ctx.fillRect(x + 42, y + 8, 5, 2);
   ctx.fillStyle = "#a45b70";
   ctx.fillRect(x + 8, y + 27, 12, 2); ctx.fillRect(x + 37, y + 30, 8, 2);
-  ctx.fillStyle = "#b5fff0"; ctx.fillRect(x + 20, y + 13, 3, 2);
-  ctx.fillStyle = "#477e8d"; ctx.fillRect(x + 27, y + 17, 9, 2);
   if (active) {
     ctx.fillStyle = tick % 2 === 0 ? "#b5fff0" : "#67dccb";
-    ctx.fillRect(x + 18, y + 13, 21, 7);
-    ctx.fillStyle = "#317488"; ctx.fillRect(x + 22, y + 15, 7, 2);
+    ctx.fillRect(x + 18, y - 8, 13, 2);
+    ctx.fillRect(x + 18, y - 3, 9, 2);
   }
 }
 
