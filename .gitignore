@@ -1,10 +1,45 @@
+# Dependencies and build output
 node_modules/
 dist/
 dist-test/
 dashboard/public/
+coverage/
+.nyc_output/
+*.tsbuildinfo
+
+# Runtime state and generated deliverables
 .officecode/
-.superpowers/
 output/
-*.log
-.DS_Store
+
+# OpenCode-generated package metadata (keep plugins and commands tracked)
+/.opencode/package.json
+/.opencode/package-lock.json
+/.opencode/bun.lock
+/.opencode/bun.lockb
+/.opencode/.gitignore
+
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+!.env.sample
+!.env.template
+.npmrc
+
+# Local agent and editor state
+.superpowers/
 AGENTS.md
+.vscode/
+.idea/
+
+# Logs, temporary files, and OS metadata
+*.log
+*.log.*
+*.tmp
+*.temp
+*.bak
+*.swp
+*~
+.DS_Store
+Thumbs.db
+Desktop.ini
