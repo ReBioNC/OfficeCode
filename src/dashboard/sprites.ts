@@ -160,14 +160,14 @@ export const CHAIR_PALETTE: Palette = {
 };
 
 export const PLANT_MAP: PixelMap = [
-  "..LLLL..",
-  ".LLLLLL.",
-  "LLLLLLLL",
-  ".LLLLLL.",
-  "..LLLL..",
+  "..LLAA..",
+  ".LLAALL.",
+  "LLLAAALL",
+  ".ALLLLA.",
+  "..AALL..",
   "...LL...",
-  "..TTTT..",
-  "..TTTT..",
+  "..TTUU..",
+  "..TTUU..",
   "..TTTT..",
   "..OOOO..",
 ];
@@ -175,7 +175,9 @@ export const PLANT_MAP: PixelMap = [
 export const PLANT_PALETTE: Palette = {
   O: INK,
   L: LEAF,
+  A: "#3E9F89",
   T: POT,
+  U: "#A65D76",
 };
 
 export const PRINTER_MAP: PixelMap = [
@@ -244,9 +246,9 @@ export const RACK_PALETTE: Palette = {
 export const SOFA_MAP: PixelMap = [
   "OOOOOOOOOOOOOOOOOOOO",
   "OACCCCCCCCCCCCCCCCAO",
-  "OACCCCCCCCCCCCCCCCAO",
+  "OACCCCHHHHHHHCCCCCAO",
   "OACCCOOOCCCCOOOCCCAO",
-  "OACCCOOOCCCCOOOCCCAO",
+  "OACCCOOODDDDOOOCCCAO",
   "OACCCCCCCCCCCCCCCCAO",
   "OOOOOOOOOOOOOOOOOOOO",
 ];
@@ -255,6 +257,8 @@ export const SOFA_PALETTE: Palette = {
   O: INK,
   A: "#9A4F70",
   C: "#E9859A",
+  H: "#FFC0B1",
+  D: "#B86689",
 };
 
 export const TABLE_MAP: PixelMap = [

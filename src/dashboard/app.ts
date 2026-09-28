@@ -290,6 +290,12 @@ function drawStudioShell(): void {
   ctx.fillRect(20, 20, 920, 520);
   ctx.fillStyle = "#514168";
   ctx.fillRect(31, 31, 898, 76);
+  // Narrow wall panels and rivets keep the large header from looking flat.
+  for (let x = 39; x < 924; x += 27) {
+    ctx.fillStyle = "#615073"; ctx.fillRect(x, 34, 2, 65);
+    ctx.fillStyle = "#8d6a8b"; ctx.fillRect(x + 5, 38, 3, 3);
+    ctx.fillStyle = "#3d345b"; ctx.fillRect(x + 5, 94, 4, 2);
+  }
   ctx.fillStyle = "#231f3f";
   ctx.fillRect(34, 104, 892, 421);
   // Sunset windows and a city silhouette establish the studio setting.
@@ -299,6 +305,12 @@ function drawStudioShell(): void {
     ctx.fillStyle = "#a96a93"; ctx.fillRect(wx + 5, 44, 129, 14);
     ctx.fillStyle = "#e58a87"; ctx.fillRect(wx + 5, 58, 129, 12);
     ctx.fillStyle = "#f2b575"; ctx.fillRect(wx + 5, 70, 129, 20);
+    for (let i = 0; i < 14; i++) {
+      const px = wx + 9 + (i * 37) % 118;
+      const py = 48 + (i * 17) % 34;
+      ctx.fillStyle = i % 3 === 0 ? "#ffd4ad" : "#f6bca8";
+      ctx.fillRect(px, py, i % 4 === 0 ? 5 : 2, 2);
+    }
     ctx.fillStyle = "#343358";
     for (let i = 0; i < 7; i++) {
       const height = 8 + ((i * 13 + wx) % 18);
@@ -310,24 +322,49 @@ function drawStudioShell(): void {
     ctx.fillStyle = "#d7b4b5";
     ctx.fillRect(wx + 70, 43, 4, 49);
     ctx.fillRect(wx + 5, 65, 129, 3);
+    ctx.fillStyle = "#261f3b"; ctx.fillRect(wx - 3, 97, 145, 5);
+    ctx.fillStyle = "#bd839e"; ctx.fillRect(wx + 6, 97, 127, 2);
   }
   plate("OFFICECODE / STUDIO MALAM", 48, 52, "#f8be6a");
   textOnCanvas("LIVE / 01", 842, 52, "#f5d8cb", 11);
   ctx.fillStyle = "#15172f"; ctx.fillRect(31, 101, 898, 6);
   ctx.fillStyle = "#f8be6a"; ctx.fillRect(31, 101, 898, 2);
   ctx.fillStyle = "#30345d"; ctx.fillRect(34, 107, 892, 415);
+  drawStudioFloorTexture();
   ctx.globalAlpha = .06;
   ctx.fillStyle = "#f8be6a";
   for (const wx of [323, 490, 657]) ctx.fillRect(wx + 19, 107, 98, 108);
   ctx.globalAlpha = 1;
-  for (let y = 122, row = 0; y < 514; y += 31, row++) {
-    for (let x = 52; x < 912; x += 40) {
-      ctx.fillStyle = row % 2 === 0 ? "#42446f" : "#3a3d68";
-      ctx.fillRect(x + (row % 2) * 18, y, 5, 2);
-    }
-  }
   ctx.fillStyle = "#191b38"; ctx.fillRect(30, 523, 900, 7);
   ctx.fillStyle = "#f18f89"; ctx.fillRect(30, 523, 900, 2);
+}
+
+function drawStudioFloorTexture(): void {
+  const left = 34, top = 107, right = 926, bottom = 522;
+  for (let row = 0, y = top; y < bottom; row++, y += 30) {
+    const offset = row % 2 === 0 ? 0 : 16;
+    for (let col = -1, x = left - offset; x < right; col++, x += 32) {
+      const tileLeft = Math.max(left, x);
+      const tileRight = Math.min(right, x + 31);
+      if (tileRight <= tileLeft) continue;
+      ctx.fillStyle = (row + col) % 3 === 0 ? "#393d69" : "#353961";
+      ctx.fillRect(tileLeft, y + 1, tileRight - tileLeft, Math.min(28, bottom - y - 1));
+      const mark = (row * 19 + col * 11 + 89) >>> 0;
+      ctx.fillStyle = "#4d5078";
+      const glintX = Math.max(tileLeft + 2, x + 6);
+      if (glintX + 5 <= tileRight) ctx.fillRect(glintX, y + 5, 5, 2);
+      if (mark % 4 === 0) {
+        ctx.fillStyle = "#54557a";
+        const fleckX = Math.max(tileLeft + 2, x + 19);
+        if (fleckX + 3 <= tileRight) ctx.fillRect(fleckX, y + 18, 3, 3);
+      }
+      if (mark % 7 === 0) {
+        ctx.fillStyle = "#292e55";
+        const scuffX = Math.max(tileLeft + 2, x + 11);
+        if (scuffX + 8 <= tileRight) ctx.fillRect(scuffX, y + 23, 8, 2);
+      }
+    }
+  }
 }
 
 function drawShell(): void {
@@ -500,18 +537,57 @@ function stationFor(run: Run): OfficeStation {
 }
 
 function officeDesk(x: number, y: number, active = false, tick = 0): void {
+  ctx.fillStyle = "#202341"; ctx.fillRect(x + 6, y + 7, 54, 38);
   drawSprite(ctx, CHAIR_MAP, CHAIR_PALETTE, x + 15, y + 39, 3);
   drawSprite(ctx, DESK_MAP, DESK_PALETTE, x, y, 3);
+  ctx.fillStyle = "#e8a08e";
+  ctx.fillRect(x + 6, y + 6, 8, 2); ctx.fillRect(x + 42, y + 8, 5, 2);
+  ctx.fillStyle = "#a45b70";
+  ctx.fillRect(x + 8, y + 27, 12, 2); ctx.fillRect(x + 37, y + 30, 8, 2);
+  ctx.fillStyle = "#b5fff0"; ctx.fillRect(x + 20, y + 13, 3, 2);
+  ctx.fillStyle = "#477e8d"; ctx.fillRect(x + 27, y + 17, 9, 2);
   if (active) {
     ctx.fillStyle = tick % 2 === 0 ? "#b5fff0" : "#67dccb";
-    ctx.fillRect(x + 17, y + 13, 23, 10);
+    ctx.fillRect(x + 18, y + 13, 21, 7);
+    ctx.fillStyle = "#317488"; ctx.fillRect(x + 22, y + 15, 7, 2);
   }
 }
 
 function drawRug(x: number, y: number, w: number, h: number, edge: string, fill: string): void {
-  ctx.fillStyle = "#1b1c38"; ctx.fillRect(x + 5, y + 6, w, h);
+  ctx.fillStyle = "#1b1c38"; ctx.fillRect(x + 6, y + 8, w, h);
   ctx.fillStyle = edge; ctx.fillRect(x, y, w, h);
   ctx.fillStyle = fill; ctx.fillRect(x + 6, y + 6, w - 12, h - 12);
+  // Staggered tile seams and sparse weave marks give the rugs a fabric surface.
+  ctx.save();
+  ctx.beginPath(); ctx.rect(x + 8, y + 8, w - 16, h - 16); ctx.clip();
+  ctx.globalAlpha = .25;
+  ctx.fillStyle = edge;
+  for (let row = 0, py = y + 10; py < y + h - 8; row++, py += 29) {
+    ctx.fillRect(x + 8, py, w - 16, 2);
+    for (let px = x + 8 + (row % 2) * 15; px < x + w - 8; px += 30) {
+      ctx.fillRect(px, py, 2, 29);
+    }
+  }
+  ctx.globalAlpha = .16;
+  ctx.fillStyle = "#fff0d6";
+  for (let row = 0, py = y + 18; py < y + h - 10; row++, py += 29) {
+    for (let px = x + 16 + (row % 2) * 15; px < x + w - 10; px += 30) {
+      ctx.fillRect(px, py, 5, 2);
+      ctx.fillRect(px + 9, py + 8, 2, 3);
+    }
+  }
+  ctx.restore();
+  ctx.fillStyle = "#f0c5b8";
+  ctx.globalAlpha = .48;
+  for (let px = x + 9; px < x + w - 8; px += 16) {
+    ctx.fillRect(px, y + 3, 5, 2);
+    ctx.fillRect(px, y + h - 5, 5, 2);
+  }
+  for (let py = y + 10; py < y + h - 8; py += 16) {
+    ctx.fillRect(x + 3, py, 2, 5);
+    ctx.fillRect(x + w - 5, py, 2, 5);
+  }
+  ctx.globalAlpha = 1;
   ctx.fillStyle = edge;
   for (const corner of [[x + 12, y + 12], [x + w - 24, y + 12], [x + 12, y + h - 24], [x + w - 24, y + h - 24]]) {
     ctx.fillRect(corner[0], corner[1], 12, 3);
