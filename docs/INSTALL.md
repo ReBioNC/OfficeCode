@@ -1,39 +1,22 @@
-# Install (M2)
+# Instalasi OfficeCode
 
-Requires Node.js 18+ (22 recommended) and optionally the `opencode` CLI on PATH.
+Panduan instalasi plugin global OpenCode, pemakaian lintas proyek, update, dan uninstall ada di [README](../README.md#instal-sebagai-plugin-global-opencode).
 
-1. `npm install`
-2. `npm test` (builds, runs unit + API tests with the mock driver)
-3. `OFFICECODE_DRIVER=mock npm run dev`, open http://127.0.0.1:8787
-4. Dispatch dari opencode (dashboard murni visual, tanpa form):
-   `POST http://127.0.0.1:8787/api/runs` — lihat `/office.run`.
-   Hasil di `output/outbox/<run-id>/`
-5. Real runs: ensure `opencode` is on PATH, then `npm run dev` (without the mock env)
+Untuk penggunaan sehari-hari, jalankan `npm ci` dan `npm run install:opencode` sekali dari checkout OfficeCode, lalu buka ulang OpenCode. Server dashboard menyala otomatis ketika plugin dimuat. Perintah `/dashboard` hanya menampilkan URL dan status; `npm run dev` tidak diperlukan.
 
-## M2: crew, models, queue, budgets
+## Mode pengembangan manual
 
-- **Crew:** 10 roles in `plugin/agents/` (pm, uiux-designer, frontend-dev,
-  backend-dev, api-dev, database-dev, devops, qa-engineer, reviewer,
-  docs-writer). New checkouts get the expanded sample office (Frontend, QA,
-  Design, Backend, Data rooms). Existing `.officecode/office.json` files are
-  never overwritten — delete yours to reseed.
-- **Models panel:** per-role provider/model/fallbacks/weight, stored in
-  `.officecode/models.json` via `PUT /api/models`. Blank model = unassigned.
-  `GET /api/models/opencode` shows what your `opencode.json` declares (if any).
-- **Queue:** global concurrency cap (`OFFICECODE_MAX_CONCURRENT`, default 8).
-  Over cap → `202` with a queue position; the waiting line shows in the
-  dashboard and drains automatically as runs settle.
-- **Budget panel:** daily USD cap + per-model rates (user-editable) in
-  `.officecode/budgets.json`. Spend is **estimated** (transcript chars/4 as
-  tokens, 70/30 in/out split) and always labeled `est.` — real provider
-  usage arrives in M3. Over cap → `402` with a friendly message.
+Jika ingin mengembangkan UI atau API tanpa menjalankan model, gunakan driver mock dari root repo:
 
-## M2 limitations (scheduled for M3)
+```powershell
+# Windows PowerShell
+$env:OFFICECODE_DRIVER = "mock"
+npm run dev
+```
 
-- `POST /api/runs` waits for the run to finish before responding — fine for
-  mock/short runs; progressive streaming over SSE arrives in M3.
-- Model fallback chains are stored but not yet auto-switched on rate limits.
-- Restarting the sidecar does not resume runs: ledgers and transcripts are
-  preserved on disk, but interrupted runs must be re-dispatched.
-- The dashboard has no Outbox panel yet: collect deliverables from
-  `output/outbox/<run-id>/` on disk.
+```bash
+# macOS / Linux
+OFFICECODE_DRIVER=mock npm run dev
+```
+
+Dashboard manual tersedia di `http://127.0.0.1:8787` secara default dan dihentikan dengan `Ctrl+C`. Mode manual tidak terikat ke siklus hidup OpenCode. Jalankan `npm test` untuk memeriksa build dan suite pengujian.
