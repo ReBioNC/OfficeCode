@@ -32,6 +32,19 @@ export const BASE_PALETTE: Palette = {
 };
 
 const ROLE_SHIRTS: Record<string, string> = {
+  fullstack: "#67DCCB",
+  frontend: "#FF827D",
+  backend: "#B49CF0",
+  auditor: "#F8BE6A",
+  qa: "#8ED9A2",
+  "ui/ux": "#EAA1C4",
+  database: "#8ED9A2",
+  api: "#67DCCB",
+  dokumentasi: "#A7ADD5",
+  riset: "#67DCCB",
+  perencana: "#C6A2F6",
+  arsitek: "#C6A2F6",
+  developer: "#F8BE6A",
   build: "#FF827D",
   plan: "#C6A2F6",
   explore: "#67DCCB",

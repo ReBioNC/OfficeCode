@@ -1,4 +1,5 @@
 import { deskPoint, roomRect, type Rect } from "./layout";
+import { displayWorkRole } from "./work-role";
 import {
   BOARD_MAP, BOARD_PALETTE, CHAIR_MAP, CHAIR_PALETTE, CHAR_FRAMES,
   COMPUTER_MAP, COMPUTER_PALETTE, DESK_MAP, DESK_PALETTE, INK, PLANT_MAP, PLANT_PALETTE,
@@ -127,11 +128,12 @@ function renderPanels(): void {
   const runById = new Map(runs.map((run) => [run.id, run]));
   const sessions = mirrorOnly ? visibleAgents() : [];
   const focus = sessions[0];
+  const roleFor = (run: Run): string => displayWorkRole(run, sessions.length === 1 && focus?.id === run.id);
   (document.getElementById("focusSection") as HTMLElement).hidden = !mirrorOnly;
   (document.getElementById("activityTracker") as HTMLElement).hidden = !mirrorOnly;
   if (mirrorOnly) {
     (document.getElementById("focusStation") as HTMLElement).textContent = focus ? activityOf(focus).station : "Siaga";
-    (document.getElementById("focusRole") as HTMLElement).textContent = focus ? `Agen ${focus.role} · ${activityOf(focus).persona}` : "Agen OpenCode";
+    (document.getElementById("focusRole") as HTMLElement).textContent = focus ? `Agen ${roleFor(focus)} · ${activityOf(focus).persona}` : "Agen OpenCode";
     (document.getElementById("focusTask") as HTMLElement).textContent = focus?.prompt || "Menunggu sesi kerja";
     (document.getElementById("focusActivity") as HTMLElement).textContent = focus ? activityOf(focus).label : "Belum ada aktivitas";
     (document.getElementById("focusDetail") as HTMLElement).textContent = focus?.detail || "Mulai mengerjakan fitur di OpenCode.";
@@ -163,7 +165,7 @@ function renderPanels(): void {
     const item = element("li", "activity-item");
     item.dataset.state = run.state;
     const top = element("div", "activity-top");
-    top.append(element("span", "activity-role", run.role), element("span", "run-state", mirrorOnly ? activityOf(run).label : label(run.state)));
+    top.append(element("span", "activity-role", mirrorOnly ? roleFor(run) : run.role), element("span", "run-state", mirrorOnly ? activityOf(run).label : label(run.state)));
     item.append(top, element("p", "activity-prompt", short(run.prompt, 120) || run.id));
     if (mirrorOnly && run.detail) item.append(element("p", "activity-detail", short(run.detail, 100)));
     return item;
@@ -179,6 +181,7 @@ function renderPanels(): void {
 
   if (mirrorOnly) {
     crewUl.replaceChildren(...sessions.map((run) => {
+      const workRole = roleFor(run);
       const card = element("li", "crew-card");
       card.dataset.state = run.state;
       card.style.setProperty("--room-color", activityOf(run).color);
@@ -186,10 +189,10 @@ function renderPanels(): void {
       const portrait = document.createElement("canvas");
       portrait.width = 30; portrait.height = 35;
       const portraitCtx = portrait.getContext("2d");
-      if (portraitCtx) drawSprite(portraitCtx, CHAR_FRAMES.idle, agentPalette(run.role, run.sessionId ?? run.id), 3, 3, 2);
+      if (portraitCtx) drawSprite(portraitCtx, CHAR_FRAMES.idle, agentPalette(workRole, run.sessionId ?? run.id), 3, 3, 2);
       avatar.append(portrait);
       const copy = element("div", "crew-copy");
-      copy.append(element("span", "crew-name", run.role), element("span", "crew-meta", short(run.prompt, 36)),
+      copy.append(element("span", "crew-name", workRole), element("span", "crew-meta", short(`${run.role} · ${run.prompt}`, 36)),
         element("span", "crew-status", activityOf(run).label));
       card.append(avatar, copy);
       return card;
@@ -704,6 +707,18 @@ function drawAgentBubble(run: Run, x: number, y: number, color: string, lane: nu
   textOnCanvas(text, left + 10, top + 5, "#fff1df", 11);
 }
 
+function drawWorkRoleBadge(role: string, x: number, y: number, scale: number, color: string): void {
+  const caption = short(role.toUpperCase(), 14);
+  ctx.font = 'bold 10px "Courier New", monospace';
+  const width = Math.ceil(ctx.measureText(caption).width) + 16;
+  const left = snap(Math.max(42, Math.min(x + 6 * scale - width / 2, 918 - width)));
+  const top = snap(Math.min(470, y + 14 * scale + 2));
+  ctx.fillStyle = "#13152d"; ctx.fillRect(left + 2, top + 2, width, 17);
+  ctx.fillStyle = "#2b2b4d"; ctx.fillRect(left, top, width, 17);
+  ctx.fillStyle = color; ctx.fillRect(left, top, 4, 17);
+  textOnCanvas(caption, left + 9, top + 3, COLORS.light, 10);
+}
+
 function drawOfficeAgents(sessions: Run[], tick: number): void {
   const spots: Record<OfficeStation, { x: number; y: number }> = {
     reading: { x: 680, y: 220 },
@@ -716,24 +731,27 @@ function drawOfficeAgents(sessions: Run[], tick: number): void {
     lounge: { x: 660, y: 387 },
   };
   const stationOccupancy = new Map<OfficeStation, number>();
-  for (const [index, run] of sessions.entries()) {
+  for (const run of sessions) {
     const station = stationFor(run);
     const slot = stationOccupancy.get(station) ?? 0;
     stationOccupancy.set(station, slot + 1);
     const base = spots[station];
-    const x = base.x + (base.x > 720 ? -1 : 1) * (slot % 3) * 50;
+    const spacing = station === "editing" ? 80 : 50;
+    const x = base.x + (base.x > 720 ? -1 : 1) * (slot % 3) * spacing;
     const y = base.y - Math.floor(slot / 3) * 30 + (tick % 2 === 0 ? 0 : 1);
     const scale = sessions.length <= 2 ? 4 : 3;
     const activity = activityOf(run);
+    const workRole = displayWorkRole(run, sessions.length === 1);
+    const palette = agentPalette(workRole, run.sessionId ?? run.id);
     ctx.fillStyle = activity.color;
     ctx.fillRect(x - 5, y + 14 * scale - 4, 12 * scale + 10, 4);
-    drawSprite(ctx, CHAR_FRAMES[frameForState(run.state, tick)], agentPalette(run.role, run.sessionId ?? run.id), x, y, scale);
+    drawSprite(ctx, CHAR_FRAMES[frameForState(run.state, tick)], palette, x, y, scale);
     if (run.state === "thinking") {
       ctx.fillStyle = "#fff7dd";
       for (let dot = 0; dot < 3; dot++) ctx.fillRect(x + 36 + dot * 7, y - 10 - (tick + dot) % 2 * 3, 4, 4);
     }
-    drawAgentBubble(run, x, y, activity.color, index % 3);
-    textOnCanvas(short(run.role.toUpperCase(), 13), x - 3, y + 15 * scale, COLORS.light, 10);
+    drawAgentBubble(run, x, y, activity.color, slot % 3);
+    drawWorkRoleBadge(workRole, x, y, scale, palette.C);
   }
 }
 
