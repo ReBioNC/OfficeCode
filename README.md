@@ -38,6 +38,12 @@ When OpenCode loads the project, the plugin starts the dashboard server automati
 
 `/dashboard` only displays information. The global dashboard is a visual view: `POST /api/runs` is disabled in plugin mode, so tasks and models run through OpenCode.
 
+### What the dashboard shows
+
+All active OpenCode sessions share one pixel-art office. Each visible agent moves between the meeting table, library, workstations, web desk, terminal, and approval area as OpenCode reports work: planning, reading files, editing code, searching the web or codebase, running terminal commands, coordinating tools, and waiting for permission. The sidebar shows each OpenCode agent name, its temporary work role, task title, and latest action. When no session is active, the most recently completed session remains visible.
+
+These states come from OpenCode session, message, tool, and permission events. The plugin does not make extra model requests for animation or role labels. Custom OpenCode agent names are shown as supplied by OpenCode and receive a stable avatar color.
+
 The dashboard stops when OpenCode closes. If OpenCode exits unexpectedly, its lease expires and the dashboard normally stops about 7–8 seconds after the last heartbeat. If another OpenCode window is still using the same project, the dashboard stays online until the last window closes.
 
 ## File locations
