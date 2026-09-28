@@ -32,6 +32,17 @@ export const BASE_PALETTE: Palette = {
 };
 
 const ROLE_SHIRTS: Record<string, string> = {
+  build: "#4A90D9",
+  plan: "#B694DC",
+  explore: "#46B5A5",
+  general: "#D9A15A",
+  opencode: "#E0A83C",
+  researcher: "#46B5A5",
+  architect: "#B694DC",
+  tester: "#61B782",
+  writer: "#D58CB1",
+  debugger: "#E27E73",
+  security: "#C99D55",
   "frontend-dev": "#4A90D9",
   "backend-dev": "#9B51E0",
   "api-dev": "#2FA8A0",
@@ -45,7 +56,11 @@ const ROLE_SHIRTS: Record<string, string> = {
 };
 
 export function shirtPalette(role: string): Palette {
-  return { ...BASE_PALETTE, C: ROLE_SHIRTS[role] ?? BASE_PALETTE["C"] };
+  const key = role.toLowerCase();
+  const colors = ["#4A90D9", "#B694DC", "#46B5A5", "#D9A15A", "#D58CB1", "#E27E73"];
+  let hash = 0;
+  for (const char of key) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  return { ...BASE_PALETTE, C: ROLE_SHIRTS[key] ?? colors[hash % colors.length] };
 }
 
 const HEAD: PixelMap = [

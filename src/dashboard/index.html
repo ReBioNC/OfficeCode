@@ -32,6 +32,10 @@
     .connection::before { content:""; width:7px; height:7px; background:#5c9b6b; box-shadow:0 0 0 2px #d8e5d8; }
     .connection[data-state="offline"] { color:#985d53; }
     .connection[data-state="offline"]::before { background:var(--red); box-shadow:0 0 0 2px #eed9d3; }
+    .activity-tracker { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:4px; padding:8px 12px; background:#e7dcc8; border-bottom:1px solid var(--line); }
+    .activity-tracker[hidden] { display:none; }
+    .activity-chip { min-width:0; padding:5px 6px; border:1px solid #c5b79e; background:#f7f0e3; color:#81766f; font:700 10px "Courier New",monospace; white-space:nowrap; text-align:center; }
+    .activity-chip[data-active="true"] { background:#f9e4a9; border-color:#9e8150; color:#2d282b; box-shadow:inset 0 -3px #d7ac66; }
     .metrics { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); border-bottom:1px solid var(--line); }
     .metric { min-width:0; padding:14px 14px 12px; border-right:1px solid var(--line); }
     .metric:last-child { border-right:0; }
@@ -55,6 +59,13 @@
     .activity-item[data-state="blocked"] .run-state { color:#a05952; }
     .activity-item[data-state="done"] .run-state { color:#726b65; }
     .activity-prompt { margin:0; color:#5d5757; font:11px/1.4 "Courier New",monospace; overflow-wrap:anywhere; }
+    .activity-detail { margin:6px 0 0; color:#396b61; font:700 10px/1.4 "Courier New",monospace; overflow-wrap:anywhere; }
+    .focus-card { background:#ece6d8; }
+    .focus-body { padding:14px; background:#fffaf0; border:1px solid #cdbfa8; border-left:5px solid #62afa3; }
+    .focus-role { display:block; margin-bottom:5px; color:#6a6060; font:700 10px "Courier New",monospace; letter-spacing:.08em; text-transform:uppercase; }
+    .focus-task { display:block; margin-bottom:12px; font-size:15px; font-weight:700; line-height:1.35; overflow-wrap:anywhere; }
+    .focus-activity { display:block; color:#2d675c; font:700 12px "Courier New",monospace; }
+    .focus-detail { display:block; margin-top:6px; color:#6a6060; font:11px/1.4 "Courier New",monospace; overflow-wrap:anywhere; }
     .empty { margin:0; padding:12px; border:1px dashed #c9bea9; color:var(--muted); font:11px/1.5 "Courier New",monospace; }
     .queue-list { display:grid; gap:1px; background:#d9cfbd; border:1px solid #d9cfbd; }
     .queue-list:empty { display:none; }
@@ -90,15 +101,17 @@
     <main class="floor-panel" aria-label="Denah kantor live">
       <header class="floor-header"><div><p class="eyebrow">Live office / lantai 01</p><h1>Office<span>Code</span> HQ</h1></div><span id="floorMeta" class="floor-meta">Memuat denah…</span></header>
       <div class="floor-stage"><canvas id="floor" width="960" height="560" role="img" aria-label="Denah kantor dengan ruang, meja, dan status agen live"></canvas></div>
-      <div class="floor-footer"><span>Denah mengikuti ruang dan meja yang aktif</span><strong id="lastSync">Menunggu sinkronisasi</strong></div>
+      <div class="floor-footer"><span>Satu kantor · agen bergerak mengikuti aktivitas OpenCode</span><strong id="lastSync">Menunggu sinkronisasi</strong></div>
     </main>
     <aside class="command-center" aria-label="Pusat informasi kantor">
       <header class="command-header"><div class="command-title"><div><h2>Command center</h2><p class="command-subtitle">Pantau kerja agen dari satu tempat.</p></div><span class="view-tag">LIVE VIEW</span></div><span id="connection" class="connection" data-state="offline" role="status">Menghubungkan…</span></header>
+      <div id="activityTracker" class="activity-tracker" aria-label="Aktivitas agen saat ini" hidden><span class="activity-chip" data-activity="thinking">◌ PIKIR</span><span class="activity-chip" data-activity="reading">▤ BACA</span><span class="activity-chip" data-activity="editing">✎ EDIT</span><span class="activity-chip" data-activity="web-search">◎ WEB</span><span class="activity-chip" data-activity="terminal">&gt;_ TERM</span><span class="activity-chip" data-activity="approval">! IZIN</span></div>
       <div class="metrics" aria-label="Ringkasan kantor"><div class="metric"><span class="metric-label">Aktif</span><span id="statActive" class="metric-value">—</span><span class="metric-unit">agen bekerja</span></div><div class="metric"><span class="metric-label">Antre</span><span id="statQueue" class="metric-value">—</span><span class="metric-unit">tugas menunggu</span></div><div class="metric"><span class="metric-label">Spend</span><span id="statSpent" class="metric-value money">—</span><span class="metric-unit">USD hari ini · est.</span></div></div>
       <div class="center-scroll">
+        <section id="focusSection" class="panel-section focus-card" aria-labelledby="focusHeading" hidden><div class="section-heading"><h3 id="focusHeading">Sedang dikerjakan</h3><span id="focusStation">Siaga</span></div><div class="focus-body"><span id="focusRole" class="focus-role">Agen OpenCode</span><span id="focusTask" class="focus-task">Menunggu sesi kerja</span><span id="focusActivity" class="focus-activity">Belum ada aktivitas</span><span id="focusDetail" class="focus-detail">Mulai mengerjakan fitur di OpenCode.</span></div></section>
         <section class="panel-section" aria-labelledby="activityTitle"><div class="section-heading"><h3 id="activityTitle">Aktivitas terbaru</h3><span id="activityCount">0 run</span></div><ul id="runs" class="activity-list" aria-live="polite"><li class="empty">Belum ada aktivitas. Jalankan tugas dari OpenCode.</li></ul></section>
         <section class="panel-section" aria-labelledby="queueTitle"><div class="section-heading"><h3 id="queueTitle">Antrean</h3><span id="queueCount">0 tugas</span></div><ul id="queue" class="queue-list" aria-live="polite"></ul><p id="queueEmpty" class="empty">Tidak ada tugas menunggu.</p></section>
-        <section class="panel-section guide" aria-labelledby="guideTitle"><div class="section-heading"><h3 id="guideTitle">Dari OpenCode</h3><span>Perintah</span></div><p>Kirim tugas dan lihat status melalui prompt OpenCode. Denah ini menampilkan keadaan runtime yang terverifikasi.</p><div class="command-code"><code>/office.run</code><code>/office.status</code><code>/office.queue</code></div></section>
+        <section class="panel-section guide" aria-labelledby="guideTitle"><div class="section-heading"><h3 id="guideTitle">Dari OpenCode</h3><span>Perintah</span></div><p>Buka URL dashboard dengan <code>/dashboard</code>. Ruang, agen, dan aktivitas mengikuti event OpenCode yang sedang berjalan.</p><div class="command-code"><code>/dashboard</code></div></section>
       </div>
     </aside>
     <section class="crew" aria-labelledby="crewTitle"><div class="crew-heading"><span class="eyebrow">Crew deck</span><h2 id="crewTitle">Meja agen</h2><p id="crewCount">Memuat…</p></div><ul id="crew" class="crew-list" aria-live="polite"></ul></section>
