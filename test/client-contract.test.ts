@@ -27,7 +27,7 @@ describe("dashboard visual-only contract", () => {
     assert.ok(!html.includes("<button"), "sidebar has no buttons");
     assert.ok(!html.includes("<input"), "sidebar has no inputs");
   });
-  it("shows role pills and status bubbles like the reference", () => {
+  it("shows role pills and status bubbles in the studio", () => {
     const src = fs.readFileSync("src/dashboard/app.ts", "utf8");
     assert.ok(src.includes("ROLE_PILL"), "role pills drawn");
     assert.ok(src.includes("BUBBLE_TEXT"), "status bubbles drawn");

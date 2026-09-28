@@ -109,6 +109,23 @@ function sessionIdOf(value) {
   return p?.sessionID ?? p?.sessionId ?? p?.session_id ?? p?.info?.id ?? p?.id ?? null;
 }
 
+function toolActivity(name, args = {}) {
+  const tool = String(name || "tool").toLowerCase();
+  const data = args && typeof args === "object" ? args : {};
+  const file = data.filePath ?? data.file_path ?? data.path ?? data.filename;
+  const target = file ? path.basename(String(file)) : "";
+  const query = data.query ?? data.pattern ?? data.url;
+  const hint = target || (query ? String(query) : "");
+  const clean = hint.replace(/[\r\n\t]+/g, " ").slice(0, 54);
+  if (/web|fetch|search|browse/.test(tool) && !/grep|codesearch/.test(tool)) return { activity: "web-search", detail: clean ? `Mencari: ${clean}` : "Mencari di web" };
+  if (/edit|write|patch|create|multiedit/.test(tool)) return { activity: "editing", detail: clean ? `Mengedit ${clean}` : "Mengedit kode" };
+  if (/read|cat|view/.test(tool)) return { activity: "reading", detail: clean ? `Membaca ${clean}` : "Membaca file" };
+  if (/grep|glob|find|codesearch|list/.test(tool)) return { activity: "code-search", detail: clean ? `Menelusuri: ${clean}` : "Menelusuri kode" };
+  if (/bash|shell|terminal|command|exec/.test(tool)) return { activity: "terminal", detail: "Menjalankan perintah" };
+  if (/task|agent|delegate/.test(tool)) return { activity: "delegating", detail: "Berkoordinasi dengan agen" };
+  return { activity: "working", detail: `Memakai ${tool.slice(0, 32)}` };
+}
+
 async function toast(client, message) {
   try { await client.tui.showToast({ body: { message, variant: "info" } }); }
   catch { /* no TUI in opencode run */ }
@@ -180,8 +197,27 @@ export const OfficeDashboardPlugin = async ({ client, directory }) => {
         const sid = sessionIdOf(event);
         await beginSession(sid, String(event.properties?.info?.title ?? event.properties?.title ?? "OpenCode session"));
       }
+      if (event.type === "session.updated") {
+        const sid = sessionIdOf(event);
+        const title = event.properties?.info?.title;
+        if (sid && typeof title === "string" && title.trim()) {
+          await beginSession(sid, title);
+          await post(await ensure(), "/api/mirror/session", { sessionId: sid, role: "opencode", prompt: title });
+        }
+      }
+      if (event.type === "message.updated" && event.properties?.info?.role === "user") {
+        const info = event.properties.info;
+        const sid = sessionIdOf(info);
+        if (sid && typeof info.agent === "string") {
+          await beginSession(sid);
+          await post(await ensure(), "/api/mirror/event", { sessionId: sid, state: "thinking", activity: "thinking",
+            role: info.agent, detail: "Menyusun langkah berikutnya" });
+        }
+      }
       if (event.type === "session.status" && event.properties?.status?.type === "busy") {
-        await beginSession(sessionIdOf(event));
+        const sid = sessionIdOf(event);
+        await beginSession(sid);
+        if (sid) await post(await ensure(), "/api/mirror/event", { sessionId: sid, state: "thinking", activity: "thinking", detail: "Menyusun langkah berikutnya" });
       }
       if (event.type === "session.idle" || event.type === "session.deleted" || event.type === "session.error") {
         const sid = sessionIdOf(event);
@@ -195,33 +231,42 @@ export const OfficeDashboardPlugin = async ({ client, directory }) => {
         const sid = sessionIdOf(event);
         if (sid) {
           await beginSession(sid);
-          await post(await ensure(), "/api/mirror/event", { sessionId: sid, state: "waiting-approval", message: "menunggu approval" });
+          await post(await ensure(), "/api/mirror/event", { sessionId: sid, state: "waiting-approval", activity: "approval", detail: "Menunggu izin", message: "menunggu approval" });
         }
       }
       if (event.type === "permission.replied") {
         const sid = sessionIdOf(event);
         if (sid) {
           await beginSession(sid);
-          await post(await ensure(), "/api/mirror/event", { sessionId: sid, state: "thinking" });
+          await post(await ensure(), "/api/mirror/event", { sessionId: sid, state: "thinking", activity: "thinking", detail: "Menyusun langkah berikutnya" });
         }
       }
     },
-    "tool.execute.before": async (input) => {
+    "chat.message": async (input) => {
+      const sid = sessionIdOf(input);
+      if (!sid) return;
+      await beginSession(sid);
+      await post(await ensure(), "/api/mirror/event", { sessionId: sid, state: "thinking", activity: "thinking",
+        role: typeof input.agent === "string" ? input.agent : undefined, detail: "Menyusun langkah berikutnya" });
+    },
+    "tool.execute.before": async (input, output) => {
       const sid = sessionIdOf(input);
       if (sid) {
         await beginSession(sid);
-        await post(await ensure(), "/api/mirror/event", { sessionId: sid, state: "acting", message: String(input.tool ?? input.name ?? "tool") });
+        const tool = String(input.tool ?? input.name ?? "tool");
+        await post(await ensure(), "/api/mirror/event", { sessionId: sid, state: "acting", message: tool,
+          ...toolActivity(tool, output?.args) });
       }
     },
     "tool.execute.after": async (input) => {
       const sid = sessionIdOf(input);
-      if (sid) await post(await ensure(), "/api/mirror/event", { sessionId: sid, state: "thinking" });
+      if (sid) await post(await ensure(), "/api/mirror/event", { sessionId: sid, state: "thinking", activity: "thinking", detail: "Memeriksa hasil tool" });
     },
     "permission.ask": async (input) => {
       const sid = sessionIdOf(input);
       if (sid) {
         await beginSession(sid);
-        await post(await ensure(), "/api/mirror/event", { sessionId: sid, state: "waiting-approval", message: "menunggu approval" });
+        await post(await ensure(), "/api/mirror/event", { sessionId: sid, state: "waiting-approval", activity: "approval", detail: "Menunggu izin", message: "menunggu approval" });
       }
     },
   };

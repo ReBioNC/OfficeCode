@@ -104,7 +104,7 @@ export async function startServer(workspaceDir: string, port: number, options: {
       return;
     }
     if (req.method === "GET" && url.pathname === "/api/office") {
-      sendJson(res, 200, { office: store.office, occupants: Object.fromEntries(store.occupants) });
+      sendJson(res, 200, { office: store.office, occupants: Object.fromEntries(store.occupants), mirrorOnly: process.env["OFFICECODE_MIRROR_ONLY"] === "1" });
       return;
     }
     if (req.method === "GET" && url.pathname === "/api/runs") {
@@ -240,7 +240,7 @@ export async function startServer(workspaceDir: string, port: number, options: {
           try {
             const input = JSON.parse(body) as {
               sessionId?: string; role?: string; prompt?: string;
-              state?: string; message?: string; outcome?: string;
+              state?: string; message?: string; outcome?: string; activity?: string; detail?: string;
             };
             if (!input.sessionId) {
               sendJson(res, 400, { error: "sessionId required" });
@@ -265,6 +265,9 @@ export async function startServer(workspaceDir: string, port: number, options: {
                 state: input.state as RunState,
                 message: input.message,
                 prompt: input.prompt,
+                role: input.role,
+                activity: input.activity,
+                detail: input.detail,
               });
               broadcast({ runId: run.id, state: run.state });
               sendJson(res, 200, { run });

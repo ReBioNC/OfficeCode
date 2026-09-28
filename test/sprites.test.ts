@@ -3,11 +3,13 @@ import assert from "node:assert/strict";
 import {
   BOARD_MAP,
   CHAR_FRAMES,
+  COMPUTER_MAP,
   DESK_MAP,
   PRINTER_MAP,
   RACK_MAP,
   SOFA_MAP,
   TABLE_MAP,
+  agentPalette,
   frameForState,
   snap,
   validateMap,
@@ -20,6 +22,7 @@ const allMaps: Array<[string, PixelMap]> = [
   ["walkB", CHAR_FRAMES.walkB],
   ["work", CHAR_FRAMES.work],
   ["desk", DESK_MAP],
+  ["computer", COMPUTER_MAP],
   ["printer", PRINTER_MAP],
   ["board", BOARD_MAP],
   ["rack", RACK_MAP],
@@ -61,5 +64,17 @@ describe("snap", () => {
   it("snaps to integer grid for crisp pixels", () => {
     assert.equal(snap(10.6), 11);
     assert.equal(snap(10.2), 10);
+  });
+});
+
+describe("agentPalette", () => {
+  it("keeps an agent's appearance stable and its role color consistent", () => {
+    const first = agentPalette("build", "session-alpha");
+    assert.deepEqual(agentPalette("build", "session-alpha"), first);
+    assert.equal(first.C, agentPalette("build", "session-beta").C);
+    assert.notDeepEqual(
+      { skin: first.S, hair: first.H },
+      { skin: agentPalette("build", "session-beta").S, hair: agentPalette("build", "session-beta").H },
+    );
   });
 });
