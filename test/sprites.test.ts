@@ -8,6 +8,7 @@ import {
   RACK_MAP,
   SOFA_MAP,
   TABLE_MAP,
+  agentPalette,
   frameForState,
   snap,
   validateMap,
@@ -61,5 +62,17 @@ describe("snap", () => {
   it("snaps to integer grid for crisp pixels", () => {
     assert.equal(snap(10.6), 11);
     assert.equal(snap(10.2), 10);
+  });
+});
+
+describe("agentPalette", () => {
+  it("keeps an agent's appearance stable and its role color consistent", () => {
+    const first = agentPalette("build", "session-alpha");
+    assert.deepEqual(agentPalette("build", "session-alpha"), first);
+    assert.equal(first.C, agentPalette("build", "session-beta").C);
+    assert.notDeepEqual(
+      { skin: first.S, hair: first.H },
+      { skin: agentPalette("build", "session-beta").S, hair: agentPalette("build", "session-beta").H },
+    );
   });
 });

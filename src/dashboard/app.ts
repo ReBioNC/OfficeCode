@@ -4,7 +4,7 @@ import {
   DESK_MAP, DESK_PALETTE, INK, PLANT_MAP, PLANT_PALETTE,
   PRINTER_MAP, PRINTER_PALETTE, RACK_MAP, RACK_PALETTE,
   SOFA_MAP, SOFA_PALETTE, TABLE_MAP, TABLE_PALETTE,
-  drawSprite, frameForState, shirtPalette, snap,
+  agentPalette, drawSprite, frameForState, shirtPalette, snap,
 } from "./sprites";
 
 interface Desk { id: string; roomId: string; label: string }
@@ -16,34 +16,34 @@ interface Run { id: string; deskId: string; role: string; state: string; prompt:
 interface QueueItem { position: number; deskId: string; role: string; prompt: string }
 
 const COLORS = {
-  night: "#1b1720", paper: "#f4f0e6", light: "#fffdf5", wall: "#d6d5ca",
-  floor: "#8ca99b", floorLine: "#77968b", muted: "#665d61", gold: "#d8b66d",
+  night: "#101326", paper: "#f7e7d5", light: "#fff1df", wall: "#504268",
+  floor: "#383a68", floorLine: "#2d315b", muted: "#b9acc4", gold: "#f8be6a",
 };
 const ROOM_COLORS: Record<string, string> = {
-  blue: "#80abd0", green: "#8fbf9d", red: "#d89792", purple: "#b6a2d2",
+  blue: "#8ea8f1", green: "#67dccb", red: "#ff827d", purple: "#c6a2f6",
 };
 const ROLE_PILL: Record<string, string> = {
-  build: "#80abd0", plan: "#b6a2d2", explore: "#62afa3", general: "#dca267",
-  researcher: "#62afa3", architect: "#b6a2d2", tester: "#77b98d",
-  writer: "#dc8bb1", debugger: "#d1726d", security: "#c7aa69",
-  pm: "#d1726d", "uiux-designer": "#dc8bb1", "frontend-dev": "#80abd0",
-  "backend-dev": "#aa8dce", "api-dev": "#62afa3", "database-dev": "#75a681",
-  devops: "#dca267", "qa-engineer": "#77b98d", reviewer: "#c7aa69",
-  "docs-writer": "#a0a4ad",
+  build: "#ff827d", plan: "#c6a2f6", explore: "#67dccb", general: "#f8be6a",
+  researcher: "#67dccb", architect: "#c6a2f6", tester: "#8ed9a2",
+  writer: "#eaa1c4", debugger: "#ff827d", security: "#f8be6a",
+  pm: "#ff827d", "uiux-designer": "#eaa1c4", "frontend-dev": "#ff827d",
+  "backend-dev": "#b49cf0", "api-dev": "#67dccb", "database-dev": "#8ed9a2",
+  devops: "#f29c75", "qa-engineer": "#8ed9a2", reviewer: "#f8be6a",
+  "docs-writer": "#a7add5",
 };
 const ACTIVITY: Record<string, { label: string; persona: string; station: string; color: string }> = {
-  arriving: { label: "Menyiapkan ruang", persona: "Agen kerja", station: "pintu", color: "#d8b66d" },
-  thinking: { label: "Berpikir", persona: "Perencana", station: "meja ide", color: "#b6a2d2" },
-  reading: { label: "Membaca file", persona: "Pembaca kode", station: "rak referensi", color: "#80abd0" },
-  editing: { label: "Mengedit kode", persona: "Editor kode", station: "meja kode", color: "#d89792" },
-  "web-search": { label: "Mencari di web", persona: "Peneliti web", station: "jendela web", color: "#62afa3" },
-  "code-search": { label: "Menelusuri kode", persona: "Peneliti kode", station: "rak referensi", color: "#80abd0" },
-  terminal: { label: "Menjalankan perintah", persona: "Operator terminal", station: "terminal", color: "#dca267" },
-  delegating: { label: "Berkoordinasi", persona: "Koordinator", station: "papan tugas", color: "#b6a2d2" },
-  working: { label: "Bekerja", persona: "Pelaksana", station: "meja kode", color: "#d89792" },
-  approval: { label: "Menunggu izin", persona: "Menunggu keputusan", station: "pintu", color: "#d8b66d" },
-  done: { label: "Selesai", persona: "Selesai", station: "lounge", color: "#8fbf9d" },
-  blocked: { label: "Terhenti", persona: "Perlu bantuan", station: "pintu", color: "#d89792" },
+  arriving: { label: "Menyiapkan ruang", persona: "Agen kerja", station: "pintu", color: "#f8be6a" },
+  thinking: { label: "Berpikir", persona: "Perencana", station: "meja ide", color: "#c6a2f6" },
+  reading: { label: "Membaca file", persona: "Pembaca kode", station: "rak referensi", color: "#8ea8f1" },
+  editing: { label: "Mengedit kode", persona: "Editor kode", station: "meja kode", color: "#ff827d" },
+  "web-search": { label: "Mencari di web", persona: "Peneliti web", station: "jendela web", color: "#67dccb" },
+  "code-search": { label: "Menelusuri kode", persona: "Peneliti kode", station: "rak referensi", color: "#8ea8f1" },
+  terminal: { label: "Menjalankan perintah", persona: "Operator terminal", station: "terminal", color: "#f8be6a" },
+  delegating: { label: "Berkoordinasi", persona: "Koordinator", station: "papan tugas", color: "#c6a2f6" },
+  working: { label: "Bekerja", persona: "Pelaksana", station: "meja kode", color: "#ff827d" },
+  approval: { label: "Menunggu izin", persona: "Menunggu keputusan", station: "pintu", color: "#f8be6a" },
+  done: { label: "Selesai", persona: "Selesai", station: "lounge", color: "#8ed9a2" },
+  blocked: { label: "Terhenti", persona: "Perlu bantuan", station: "pintu", color: "#ff827d" },
 };
 const STATUS_LABEL: Record<string, string> = {
   walking: "Menuju meja", thinking: "Berpikir", acting: "Bekerja",
@@ -186,7 +186,7 @@ function renderPanels(): void {
       const portrait = document.createElement("canvas");
       portrait.width = 30; portrait.height = 35;
       const portraitCtx = portrait.getContext("2d");
-      if (portraitCtx) drawSprite(portraitCtx, CHAR_FRAMES.idle, shirtPalette(run.role), 3, 3, 2);
+      if (portraitCtx) drawSprite(portraitCtx, CHAR_FRAMES.idle, agentPalette(run.role, run.sessionId ?? run.id), 3, 3, 2);
       avatar.append(portrait);
       const copy = element("div", "crew-copy");
       copy.append(element("span", "crew-name", run.role), element("span", "crew-meta", short(run.prompt, 36)),
@@ -281,7 +281,57 @@ function plate(value: string, x: number, y: number, fill = COLORS.light, color =
   textOnCanvas(value, x + 9, y + 4, color);
 }
 
+function drawStudioShell(): void {
+  ctx.fillStyle = "#0b0e20";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = "#a96989";
+  ctx.fillRect(14, 14, 932, 532);
+  ctx.fillStyle = "#2a2749";
+  ctx.fillRect(20, 20, 920, 520);
+  ctx.fillStyle = "#514168";
+  ctx.fillRect(31, 31, 898, 76);
+  ctx.fillStyle = "#231f3f";
+  ctx.fillRect(34, 104, 892, 421);
+  // Sunset windows and a city silhouette establish the studio setting.
+  for (const wx of [323, 490, 657]) {
+    ctx.fillStyle = INK;
+    ctx.fillRect(wx, 39, 139, 58);
+    ctx.fillStyle = "#a96a93"; ctx.fillRect(wx + 5, 44, 129, 14);
+    ctx.fillStyle = "#e58a87"; ctx.fillRect(wx + 5, 58, 129, 12);
+    ctx.fillStyle = "#f2b575"; ctx.fillRect(wx + 5, 70, 129, 20);
+    ctx.fillStyle = "#343358";
+    for (let i = 0; i < 7; i++) {
+      const height = 8 + ((i * 13 + wx) % 18);
+      ctx.fillRect(wx + 6 + i * 19, 90 - height, 16, height);
+      ctx.fillStyle = "#ffd28b";
+      ctx.fillRect(wx + 11 + i * 19, 86 - height / 2, 3, 3);
+      ctx.fillStyle = "#343358";
+    }
+    ctx.fillStyle = "#d7b4b5";
+    ctx.fillRect(wx + 70, 43, 4, 49);
+    ctx.fillRect(wx + 5, 65, 129, 3);
+  }
+  plate("OFFICECODE / STUDIO MALAM", 48, 52, "#f8be6a");
+  textOnCanvas("LIVE / 01", 842, 52, "#f5d8cb", 11);
+  ctx.fillStyle = "#15172f"; ctx.fillRect(31, 101, 898, 6);
+  ctx.fillStyle = "#f8be6a"; ctx.fillRect(31, 101, 898, 2);
+  ctx.fillStyle = "#30345d"; ctx.fillRect(34, 107, 892, 415);
+  ctx.globalAlpha = .06;
+  ctx.fillStyle = "#f8be6a";
+  for (const wx of [323, 490, 657]) ctx.fillRect(wx + 19, 107, 98, 108);
+  ctx.globalAlpha = 1;
+  for (let y = 122, row = 0; y < 514; y += 31, row++) {
+    for (let x = 52; x < 912; x += 40) {
+      ctx.fillStyle = row % 2 === 0 ? "#42446f" : "#3a3d68";
+      ctx.fillRect(x + (row % 2) * 18, y, 5, 2);
+    }
+  }
+  ctx.fillStyle = "#191b38"; ctx.fillRect(30, 523, 900, 7);
+  ctx.fillStyle = "#f18f89"; ctx.fillRect(30, 523, 900, 2);
+}
+
 function drawShell(): void {
+  if (mirrorOnly) { drawStudioShell(); return; }
   const floorBottom = canvas.height - 36;
   ctx.fillStyle = COLORS.night;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -453,90 +503,115 @@ function officeDesk(x: number, y: number, active = false, tick = 0): void {
   drawSprite(ctx, CHAIR_MAP, CHAIR_PALETTE, x + 15, y + 39, 3);
   drawSprite(ctx, DESK_MAP, DESK_PALETTE, x, y, 3);
   if (active) {
-    ctx.fillStyle = tick % 2 === 0 ? "#c0fff0" : "#80d7e5";
+    ctx.fillStyle = tick % 2 === 0 ? "#b5fff0" : "#67dccb";
     ctx.fillRect(x + 17, y + 13, 23, 10);
   }
 }
 
+function drawRug(x: number, y: number, w: number, h: number, edge: string, fill: string): void {
+  ctx.fillStyle = "#1b1c38"; ctx.fillRect(x + 5, y + 6, w, h);
+  ctx.fillStyle = edge; ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = fill; ctx.fillRect(x + 6, y + 6, w - 12, h - 12);
+  ctx.fillStyle = edge;
+  for (const corner of [[x + 12, y + 12], [x + w - 24, y + 12], [x + 12, y + h - 24], [x + w - 24, y + h - 24]]) {
+    ctx.fillRect(corner[0], corner[1], 12, 3);
+    ctx.fillRect(corner[0], corner[1], 3, 12);
+  }
+}
+
+function drawLamp(x: number, y: number, tick: number): void {
+  ctx.fillStyle = "#c48c9b"; ctx.fillRect(x + 11, y, 4, 11);
+  ctx.fillStyle = INK; ctx.fillRect(x + 2, y + 10, 22, 6);
+  ctx.fillStyle = "#f8be6a"; ctx.fillRect(x + 6, y + 16, 14, 5);
+  ctx.globalAlpha = tick % 2 === 0 ? .13 : .09;
+  ctx.fillStyle = "#f8be6a"; ctx.fillRect(x - 8, y + 22, 42, 43);
+  ctx.globalAlpha = 1;
+}
+
 function drawOfficeFurniture(tick: number, active: Set<OfficeStation>): void {
-  // One continuous floor, with furniture and low partitions defining work zones.
-  ctx.fillStyle = "#a5b8a8";
-  ctx.fillRect(40, 91, 884, 163);
-  ctx.fillStyle = "#8fae9c";
-  ctx.fillRect(40, 276, 621, 241);
-  ctx.fillStyle = "#a4b9b4";
-  ctx.fillRect(682, 276, 242, 241);
-  ctx.fillStyle = "#789689";
-  for (let x = 50; x < 922; x += 34) {
-    for (let y = 102; y < 510; y += 34) ctx.fillRect(x, y, 5, 5);
+  // Color-blocked rugs organize one uninterrupted studio floor.
+  drawRug(49, 124, 225, 159, "#a05f8f", "#493455");
+  drawRug(291, 124, 295, 159, "#9c86ce", "#45406b");
+  drawRug(606, 124, 308, 159, "#59bdb7", "#294a62");
+  drawRug(49, 300, 542, 212, "#6869a4", "#343660");
+  drawRug(611, 300, 303, 212, "#dd917c", "#493c60");
+  plate("IDEA POD", 59, 131, "#f2a1aa");
+  plate("ATELIER / RENCANA", 302, 131, "#cbb5f1");
+  plate("PUSTAKA DIGITAL", 618, 131, "#86e5d4");
+  plate("MEJA KERJA", 59, 307, "#aca9e0");
+  plate("OPS / KOPI", 623, 307, "#f8bd91");
+
+  // Wall art, corkboard, and a lounge seat make the idea area recognizable.
+  ctx.fillStyle = INK; ctx.fillRect(68, 166, 45, 34);
+  ctx.fillStyle = "#e996a0"; ctx.fillRect(72, 170, 37, 26);
+  ctx.fillStyle = "#ffc884"; ctx.fillRect(77, 181, 12, 8);
+  ctx.fillStyle = "#513e65"; ctx.fillRect(84, 176, 19, 4);
+  drawSprite(ctx, BOARD_MAP, BOARD_PALETTE, 171, 163, 3);
+  drawSprite(ctx, SOFA_MAP, SOFA_PALETTE, 75, 220, 3);
+  ctx.fillStyle = "#f8be6a"; ctx.fillRect(177, 228, 34, 19);
+  ctx.fillStyle = "#54405d"; ctx.fillRect(183, 234, 22, 6);
+  drawSprite(ctx, PLANT_MAP, PLANT_PALETTE, 242, 239, 2);
+
+  // A collaborative planning table with documents and hanging lamps.
+  drawLamp(356, 118, tick); drawLamp(506, 118, tick);
+  ctx.fillStyle = INK; ctx.fillRect(322, 175, 235, 64);
+  ctx.fillStyle = "#9d5579"; ctx.fillRect(327, 180, 225, 54);
+  ctx.fillStyle = "#e58e86"; ctx.fillRect(333, 186, 213, 42);
+  for (const x of [339, 392, 445, 498]) {
+    ctx.fillStyle = "#291e40"; ctx.fillRect(x, 158, 33, 16); ctx.fillRect(x, 240, 33, 16);
+    ctx.fillStyle = "#c17e95"; ctx.fillRect(x + 4, 160, 25, 11); ctx.fillRect(x + 4, 243, 25, 10);
   }
+  ctx.fillStyle = "#fae5d3"; ctx.fillRect(357, 194, 30, 20);
+  ctx.fillStyle = "#77daca"; ctx.fillRect(361, 198, 22, 3); ctx.fillRect(361, 204, 16, 3);
+  ctx.fillStyle = "#f8be6a"; ctx.fillRect(480, 196, 23, 17);
+  ctx.fillStyle = "#fbe8d0"; ctx.fillRect(486, 198, 11, 8);
+  drawSprite(ctx, PLANT_MAP, PLANT_PALETTE, 561, 244, 2);
 
-  // Low office partitions leave wide passages between every zone.
-  for (const [x, w] of [[40, 207], [283, 244], [563, 361]]) {
-    ctx.fillStyle = INK; ctx.fillRect(x, 255, w, 5);
-    ctx.fillStyle = COLORS.paper; ctx.fillRect(x, 260, w, 12);
-  }
-  ctx.fillStyle = INK; ctx.fillRect(670, 278, 5, 99); ctx.fillRect(670, 423, 5, 94);
-  ctx.fillStyle = COLORS.paper; ctx.fillRect(675, 278, 9, 99); ctx.fillRect(675, 423, 9, 94);
-
-  plate("STUDIO", 54, 101, "#e8dfca");
-  plate("MEJA RAPAT", 299, 101, "#e8dfca");
-  plate("RISET / WEB", 637, 101, "#e8dfca");
-  plate("AREA KERJA", 54, 284, "#e8dfca");
-  plate("LOUNGE / OPS", 695, 284, "#e8dfca");
-
-  // Studio desk and pinned notes.
-  officeDesk(91, 163, active.has("delegating"), tick);
-  drawSprite(ctx, BOARD_MAP, BOARD_PALETTE, 188, 138, 2);
-  drawSprite(ctx, PLANT_MAP, PLANT_PALETTE, 57, 219, 2);
-  ctx.fillStyle = "#f7e1ae"; ctx.fillRect(213, 202, 25, 22);
-  ctx.fillStyle = "#b88f7b"; ctx.fillRect(218, 208, 5, 5);
-
-  // A communal table with chairs and documents for planning.
-  ctx.fillStyle = INK; ctx.fillRect(311, 153, 239, 71);
-  ctx.fillStyle = "#a36d42"; ctx.fillRect(316, 158, 229, 61);
-  ctx.fillStyle = "#c8915b"; ctx.fillRect(322, 164, 217, 48);
-  for (const x of [333, 383, 433, 483]) {
-    ctx.fillStyle = "#6b4550"; ctx.fillRect(x, 136, 31, 17); ctx.fillRect(x, 225, 31, 16);
-    ctx.fillStyle = INK; ctx.fillRect(x, 149, 31, 4); ctx.fillRect(x, 225, 31, 4);
-  }
-  ctx.fillStyle = "#f4efe2"; ctx.fillRect(484, 172, 26, 30);
-  ctx.fillStyle = "#80abd0"; ctx.fillRect(490, 179, 15, 3); ctx.fillRect(490, 187, 13, 3);
-  drawSprite(ctx, PLANT_MAP, PLANT_PALETTE, 564, 216, 2);
-
-  // Research library, web desk, and a small file cart.
-  for (const y of [140, 163, 186]) {
-    ctx.fillStyle = INK; ctx.fillRect(632, y, 75, 20);
-    ctx.fillStyle = "#8d6848"; ctx.fillRect(636, y + 4, 67, 13);
-    for (let x = 643; x < 700; x += 10) {
-      ctx.fillStyle = ["#d8b66d", "#80abd0", "#d89792", "#b6a2d2"][(x / 10) % 4 | 0];
-      ctx.fillRect(x, y + 5, 6, 11);
+  // Books, a wall globe, and a search monitor occupy the research rug.
+  for (const y of [164, 190, 216]) {
+    ctx.fillStyle = INK; ctx.fillRect(625, y, 89, 22);
+    ctx.fillStyle = "#655173"; ctx.fillRect(630, y + 4, 79, 14);
+    for (let i = 0; i < 9; i++) {
+      ctx.fillStyle = ["#ff9c83", "#f8be6a", "#89dcd1", "#bda4e9", "#eaa1c4"][i % 5];
+      ctx.fillRect(636 + i * 8, y + 5, 5, 12);
     }
   }
-  officeDesk(781, 156, active.has("web-search"), tick);
-  ctx.fillStyle = active.has("web-search") && tick % 2 === 0 ? "#d2fff4" : "#a6d6d5";
-  ctx.fillRect(797, 169, 24, 10);
-  ctx.fillStyle = INK; ctx.fillRect(805, 171, 8, 6);
-  drawSprite(ctx, PLANT_MAP, PLANT_PALETTE, 895, 216, 2);
+  ctx.fillStyle = "#f8be6a"; ctx.fillRect(736, 166, 30, 30);
+  ctx.fillStyle = "#294a62"; ctx.fillRect(741, 171, 20, 20);
+  ctx.fillStyle = "#86e5d4"; ctx.fillRect(749, 172, 3, 18); ctx.fillRect(742, 179, 18, 3);
+  officeDesk(809, 179, active.has("web-search"), tick);
+  ctx.fillStyle = active.has("web-search") && tick % 2 === 0 ? "#c3fff0" : "#67dccb";
+  ctx.fillRect(826, 191, 22, 9);
+  drawSprite(ctx, PLANT_MAP, PLANT_PALETTE, 888, 246, 2);
 
-  // Open-plan desks. Every station stays on the same visible floor.
-  for (const y of [326, 424]) {
-    for (const x of [72, 184, 296, 408, 520]) officeDesk(x, y, active.has("editing") && x === 184 && y === 326, tick);
+  // Staggered workstations, a blueprint board, stationery and cables.
+  for (const [x, y] of [[77, 348], [208, 342], [346, 355], [90, 440], [264, 431], [452, 413]]) {
+    officeDesk(x, y, active.has("editing") && x === 208, tick);
   }
-  drawSprite(ctx, BOARD_MAP, BOARD_PALETTE, 594, 310, 2);
-  drawSprite(ctx, PLANT_MAP, PLANT_PALETTE, 46, 486, 2);
-  drawSprite(ctx, PLANT_MAP, PLANT_PALETTE, 633, 486, 2);
+  drawSprite(ctx, BOARD_MAP, BOARD_PALETTE, 493, 330, 3);
+  ctx.fillStyle = "#f8be6a"; ctx.fillRect(373, 332, 20, 14);
+  ctx.fillStyle = "#ff827d"; ctx.fillRect(400, 334, 13, 13);
+  ctx.fillStyle = "#242746";
+  for (let x = 151; x < 311; x += 16) ctx.fillRect(x, 492, 8, 2);
+  drawSprite(ctx, PLANT_MAP, PLANT_PALETTE, 66, 477, 2);
+  drawSprite(ctx, PLANT_MAP, PLANT_PALETTE, 552, 477, 2);
 
-  // Shared lounge, coffee corner, and operations terminal.
-  drawSprite(ctx, SOFA_MAP, SOFA_PALETTE, 713, 322, 3);
-  drawSprite(ctx, TABLE_MAP, TABLE_PALETTE, 796, 338, 2);
-  ctx.fillStyle = INK; ctx.fillRect(867, 322, 35, 51);
-  ctx.fillStyle = "#b9dda1"; ctx.fillRect(871, 326, 27, 40);
-  ctx.fillStyle = "#5a785d"; ctx.fillRect(881, 337, 7, 16);
-  officeDesk(735, 412, active.has("terminal"), tick);
-  drawSprite(ctx, RACK_MAP, RACK_PALETTE, 869, 409, 3);
-  drawSprite(ctx, PRINTER_MAP, PRINTER_PALETTE, 816, 470, 2);
-  drawSprite(ctx, PLANT_MAP, PLANT_PALETTE, 897, 480, 2);
+  // Coffee counter, soft seating, printer, terminal and server tower.
+  drawSprite(ctx, SOFA_MAP, SOFA_PALETTE, 632, 356, 3);
+  drawSprite(ctx, TABLE_MAP, TABLE_PALETTE, 721, 372, 2);
+  ctx.fillStyle = INK; ctx.fillRect(842, 347, 48, 49);
+  ctx.fillStyle = "#ec9b83"; ctx.fillRect(847, 352, 38, 38);
+  ctx.fillStyle = "#312c50"; ctx.fillRect(857, 357, 18, 24);
+  ctx.fillStyle = "#89e7d8"; ctx.fillRect(861, 364, 10, 8);
+  ctx.fillStyle = "#f8be6a"; ctx.fillRect(791, 360, 15, 11); ctx.fillRect(811, 360, 15, 11);
+  officeDesk(741, 424, active.has("terminal"), tick);
+  drawSprite(ctx, RACK_MAP, RACK_PALETTE, 863, 416, 3);
+  drawSprite(ctx, PRINTER_MAP, PRINTER_PALETTE, 815, 474, 2);
+  drawSprite(ctx, PLANT_MAP, PLANT_PALETTE, 891, 475, 2);
+  if (active.has("approval")) {
+    ctx.fillStyle = tick % 2 === 0 ? "#ffd594" : "#ff827d";
+    ctx.fillRect(613, 347, 8, 53);
+  }
 }
 
 function drawAgentBubble(run: Run, x: number, y: number, color: string, lane: number): void {
@@ -545,22 +620,24 @@ function drawAgentBubble(run: Run, x: number, y: number, color: string, lane: nu
   const width = Math.min(278, Math.ceil(ctx.measureText(text).width) + 18);
   const left = snap(Math.max(42, Math.min(x - 16, 919 - width)));
   const top = snap(Math.max(108, y - 27 - lane * 25));
-  ctx.fillStyle = INK; ctx.fillRect(left + 3, top + 3, width, 22);
-  ctx.fillStyle = COLORS.light; ctx.fillRect(left, top, width, 22);
-  ctx.fillStyle = color; ctx.fillRect(left, top, 5, 22);
-  textOnCanvas(text, left + 11, top + 5, INK, 11);
+  ctx.fillStyle = "#0c1025"; ctx.fillRect(left + 3, top + 4, width, 22);
+  ctx.fillStyle = color; ctx.fillRect(left, top, width, 22);
+  ctx.fillStyle = "#242747"; ctx.fillRect(left + 3, top + 3, width - 6, 16);
+  const tail = Math.max(left + 8, Math.min(x + 4, left + width - 15));
+  ctx.fillStyle = color; ctx.fillRect(tail, top + 22, 7, 5);
+  textOnCanvas(text, left + 10, top + 5, "#fff1df", 11);
 }
 
 function drawOfficeAgents(sessions: Run[], tick: number): void {
   const spots: Record<OfficeStation, { x: number; y: number }> = {
-    reading: { x: 682, y: 194 },
-    "web-search": { x: 813, y: 195 },
-    thinking: { x: 410, y: 189 },
-    delegating: { x: 163, y: 189 },
-    editing: { x: 197, y: 355 },
-    terminal: { x: 761, y: 417 },
-    approval: { x: 681, y: 365 },
-    lounge: { x: 744, y: 365 },
+    reading: { x: 680, y: 220 },
+    "web-search": { x: 819, y: 221 },
+    thinking: { x: 417, y: 211 },
+    delegating: { x: 190, y: 207 },
+    editing: { x: 221, y: 379 },
+    terminal: { x: 765, y: 420 },
+    approval: { x: 626, y: 385 },
+    lounge: { x: 660, y: 387 },
   };
   const stationOccupancy = new Map<OfficeStation, number>();
   for (const [index, run] of sessions.entries()) {
@@ -574,7 +651,7 @@ function drawOfficeAgents(sessions: Run[], tick: number): void {
     const activity = activityOf(run);
     ctx.fillStyle = activity.color;
     ctx.fillRect(x - 5, y + 14 * scale - 4, 12 * scale + 10, 4);
-    drawSprite(ctx, CHAR_FRAMES[frameForState(run.state, tick)], shirtPalette(run.role), x, y, scale);
+    drawSprite(ctx, CHAR_FRAMES[frameForState(run.state, tick)], agentPalette(run.role, run.sessionId ?? run.id), x, y, scale);
     if (run.state === "thinking") {
       ctx.fillStyle = "#fff7dd";
       for (let dot = 0; dot < 3; dot++) ctx.fillRect(x + 36 + dot * 7, y - 10 - (tick + dot) % 2 * 3, 4, 4);
@@ -589,15 +666,15 @@ function drawSessionFloor(tick: number): void {
   const active = new Set(sessions.map(stationFor));
   drawOfficeFurniture(tick, active);
   if (sessions.length === 0) {
-    plate("KANTOR SIAGA", 384, 377, "#e9dfcd");
+    plate("STUDIO SIAGA", 384, 377, "#f8be6a");
     textOnCanvas("Mulai sesi OpenCode untuk melihat agen bekerja.", 282, 411, COLORS.light, 12);
     return;
   }
   drawOfficeAgents(sessions, tick);
   const primary = sessions[0];
-  ctx.fillStyle = "#e8dfca"; ctx.fillRect(42, 489, 610, 26);
+  ctx.fillStyle = "#1b1d3b"; ctx.fillRect(42, 489, 610, 26);
   ctx.fillStyle = activityOf(primary).color; ctx.fillRect(42, 489, 5, 26);
-  textOnCanvas(short(primary.prompt || "Sesi OpenCode", 47), 54, 495, INK, 11);
+  textOnCanvas(short(primary.prompt || "Sesi OpenCode", 47), 54, 495, COLORS.light, 11);
   const activeCount = sessions.filter((run) => run.state !== "done" && run.state !== "blocked").length;
   textOnCanvas(activeCount + " AGEN AKTIF", 792, 494, COLORS.light, 11);
 }

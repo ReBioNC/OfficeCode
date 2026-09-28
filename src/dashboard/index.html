@@ -3,110 +3,110 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="theme-color" content="#1b1720" />
-  <title>OfficeCode — Live office</title>
+  <meta name="theme-color" content="#0b0e20" />
+  <title>OfficeCode — Studio malam</title>
   <style>
-    :root { color-scheme: light; --ink:#27232b; --night:#1b1720; --paper:#f4f0e6; --light:#fffdf5; --line:#cfc6b4; --muted:#756e70; --sage:#708f81; --red:#bc6865; font-family:"Trebuchet MS",Arial,sans-serif; }
+    :root { color-scheme: dark; --ink:#fff1df; --night:#0b0e20; --paper:#1c1e3b; --light:#292b4e; --line:#434361; --muted:#adaac6; --sage:#67dccb; --red:#ff827d; --accent:#f8be6a; font-family:"Trebuchet MS",Arial,sans-serif; }
     * { box-sizing:border-box; }
     body { margin:0; min-width:320px; background:var(--night); color:var(--ink); }
     .app { display:grid; grid-template-columns:minmax(0,1.78fr) minmax(350px,.98fr); grid-template-rows:minmax(0,1fr) 126px; height:100dvh; min-height:620px; overflow:hidden; }
     .floor-panel { min-width:0; min-height:0; display:flex; flex-direction:column; background:var(--night); }
-    .floor-header { display:flex; align-items:center; justify-content:space-between; gap:16px; min-height:70px; padding:13px 24px; color:var(--light); border-bottom:1px solid #39313b; }
+    .floor-header { display:flex; align-items:center; justify-content:space-between; gap:16px; min-height:70px; padding:13px 24px; color:var(--ink); border-bottom:1px solid #403954; }
     .eyebrow,.floor-meta,.metric-label,.run-state,.queue-number,.crew-meta { font:700 10px "Courier New",monospace; letter-spacing:.08em; text-transform:uppercase; }
-    .eyebrow { color:#c9b792; margin:0 0 4px; }
+    .eyebrow { color:var(--accent); margin:0 0 4px; }
     h1,h2,h3,p { margin-top:0; }
     h1 { margin-bottom:0; font-size:clamp(20px,2vw,28px); line-height:1; letter-spacing:-.04em; }
-    h1 span { color:#d7b471; }
-    .floor-meta { color:#bfb5bb; white-space:nowrap; }
-    .floor-stage { flex:1; min-height:0; display:grid; place-items:center; padding:18px 20px; }
+    h1 span { color:#ff9690; }
+    .floor-meta { color:#bcb7d4; white-space:nowrap; }
+    .floor-stage { flex:1; min-height:0; display:grid; place-items:center; padding:18px 20px; background:radial-gradient(circle at 50% 35%,#292444 0%,#0b0e20 72%); }
     #floor { display:block; width:100%; height:100%; object-fit:contain; image-rendering:pixelated; }
-    .floor-footer { display:flex; align-items:center; justify-content:space-between; gap:12px; min-height:40px; padding:0 24px; color:#bfb5bb; border-top:1px solid #39313b; font:11px "Courier New",monospace; }
-    .floor-footer strong { color:#e8d3a9; }
-    .command-center { display:flex; flex-direction:column; min-width:0; min-height:0; background:var(--paper); border-left:4px solid #e4d8c5; box-shadow:inset 1px 0 var(--ink); }
-    .command-header { padding:18px 20px 16px; border-bottom:3px double var(--line); background:#f8f4e9; }
+    .floor-footer { display:flex; align-items:center; justify-content:space-between; gap:12px; min-height:40px; padding:0 24px; color:#bcb7d4; border-top:1px solid #403954; font:11px "Courier New",monospace; }
+    .floor-footer strong { color:var(--accent); }
+    .command-center { display:flex; flex-direction:column; min-width:0; min-height:0; background:var(--paper); border-left:4px solid #8c5d88; box-shadow:inset 1px 0 #0b0e20; }
+    .command-header { padding:18px 20px 16px; border-bottom:1px solid var(--line); background:#242542; }
     .command-title { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
     .command-title h2 { margin:0 0 6px; font-size:19px; line-height:1; letter-spacing:-.05em; }
     .command-subtitle { margin:0; color:var(--muted); font-size:12px; line-height:1.4; }
-    .view-tag { flex:none; border:1px solid #9d927f; background:#eee5d1; padding:4px 6px; font:700 9px "Courier New",monospace; letter-spacing:.06em; }
-    .connection { display:inline-flex; align-items:center; gap:7px; margin-top:11px; font:700 11px "Courier New",monospace; color:#436a54; }
-    .connection::before { content:""; width:7px; height:7px; background:#5c9b6b; box-shadow:0 0 0 2px #d8e5d8; }
-    .connection[data-state="offline"] { color:#985d53; }
-    .connection[data-state="offline"]::before { background:var(--red); box-shadow:0 0 0 2px #eed9d3; }
-    .activity-tracker { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:4px; padding:8px 12px; background:#e7dcc8; border-bottom:1px solid var(--line); }
+    .view-tag { flex:none; border:1px solid var(--accent); background:#453556; color:#ffdfaa; padding:4px 6px; font:700 9px "Courier New",monospace; letter-spacing:.06em; }
+    .connection { display:inline-flex; align-items:center; gap:7px; margin-top:11px; font:700 11px "Courier New",monospace; color:#81e8da; }
+    .connection::before { content:""; width:7px; height:7px; background:#67dccb; box-shadow:0 0 0 2px #354f63; }
+    .connection[data-state="offline"] { color:#ff9e9b; }
+    .connection[data-state="offline"]::before { background:var(--red); box-shadow:0 0 0 2px #653750; }
+    .activity-tracker { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:4px; padding:8px 12px; background:#181a34; border-bottom:1px solid var(--line); }
     .activity-tracker[hidden] { display:none; }
-    .activity-chip { min-width:0; padding:5px 6px; border:1px solid #c5b79e; background:#f7f0e3; color:#81766f; font:700 10px "Courier New",monospace; white-space:nowrap; text-align:center; }
-    .activity-chip[data-active="true"] { background:#f9e4a9; border-color:#9e8150; color:#2d282b; box-shadow:inset 0 -3px #d7ac66; }
-    .metrics { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); border-bottom:1px solid var(--line); }
+    .activity-chip { min-width:0; padding:5px 6px; border:1px solid #464363; background:#292b4e; color:#b8b2cd; font:700 10px "Courier New",monospace; white-space:nowrap; text-align:center; }
+    .activity-chip[data-active="true"] { background:#664460; border-color:#ff9a8b; color:#fff1df; box-shadow:inset 0 -3px #ff827d; }
+    .metrics { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); background:#262745; border-bottom:1px solid var(--line); }
     .metric { min-width:0; padding:14px 14px 12px; border-right:1px solid var(--line); }
     .metric:last-child { border-right:0; }
     .metric-label { display:block; color:var(--muted); margin-bottom:8px; }
     .metric-value { display:block; font:700 23px "Courier New",monospace; line-height:1; overflow-wrap:anywhere; }
     .metric-value.money { font-size:17px; }
     .metric-unit { display:block; margin-top:5px; color:var(--muted); font:10px "Courier New",monospace; }
-    .center-scroll { min-height:0; flex:1; overflow-y:auto; scrollbar-color:#baa98b transparent; }
+    .center-scroll { min-height:0; flex:1; overflow-y:auto; scrollbar-color:#696482 transparent; }
     .panel-section { padding:16px 20px; border-bottom:1px solid var(--line); }
     .section-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:11px; }
     .section-heading h3 { margin:0; font-size:12px; letter-spacing:.07em; text-transform:uppercase; }
     .section-heading span { color:var(--muted); font:10px "Courier New",monospace; }
     .activity-list,.queue-list,.crew-list { margin:0; padding:0; list-style:none; }
     .activity-list { display:grid; gap:8px; }
-    .activity-item { padding:10px 11px; background:var(--light); border:1px solid #d9cfbd; border-left:4px solid var(--sage); }
+    .activity-item { padding:10px 11px; background:var(--light); border:1px solid #4d4b6d; border-left:4px solid var(--sage); }
     .activity-item[data-state="blocked"] { border-left-color:var(--red); }
-    .activity-item[data-state="done"] { border-left-color:#a39a85; }
+    .activity-item[data-state="done"] { border-left-color:#8ed9a2; }
     .activity-top { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:5px; }
     .activity-role { font-size:12px; font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-    .run-state { color:#537360; white-space:nowrap; }
-    .activity-item[data-state="blocked"] .run-state { color:#a05952; }
-    .activity-item[data-state="done"] .run-state { color:#726b65; }
-    .activity-prompt { margin:0; color:#5d5757; font:11px/1.4 "Courier New",monospace; overflow-wrap:anywhere; }
-    .activity-detail { margin:6px 0 0; color:#396b61; font:700 10px/1.4 "Courier New",monospace; overflow-wrap:anywhere; }
-    .focus-card { background:#ece6d8; }
-    .focus-body { padding:14px; background:#fffaf0; border:1px solid #cdbfa8; border-left:5px solid #62afa3; }
-    .focus-role { display:block; margin-bottom:5px; color:#6a6060; font:700 10px "Courier New",monospace; letter-spacing:.08em; text-transform:uppercase; }
+    .run-state { color:#7be2d5; white-space:nowrap; }
+    .activity-item[data-state="blocked"] .run-state { color:#ff9e9b; }
+    .activity-item[data-state="done"] .run-state { color:#9ae2b0; }
+    .activity-prompt { margin:0; color:#d5d1e4; font:11px/1.4 "Courier New",monospace; overflow-wrap:anywhere; }
+    .activity-detail { margin:6px 0 0; color:#8de8dc; font:700 10px/1.4 "Courier New",monospace; overflow-wrap:anywhere; }
+    .focus-card { background:#242541; }
+    .focus-body { padding:14px; background:#2d2e51; border:1px solid #615775; border-left:5px solid #ff827d; }
+    .focus-role { display:block; margin-bottom:5px; color:#bdb5d2; font:700 10px "Courier New",monospace; letter-spacing:.08em; text-transform:uppercase; }
     .focus-task { display:block; margin-bottom:12px; font-size:15px; font-weight:700; line-height:1.35; overflow-wrap:anywhere; }
-    .focus-activity { display:block; color:#2d675c; font:700 12px "Courier New",monospace; }
-    .focus-detail { display:block; margin-top:6px; color:#6a6060; font:11px/1.4 "Courier New",monospace; overflow-wrap:anywhere; }
-    .empty { margin:0; padding:12px; border:1px dashed #c9bea9; color:var(--muted); font:11px/1.5 "Courier New",monospace; }
-    .queue-list { display:grid; gap:1px; background:#d9cfbd; border:1px solid #d9cfbd; }
+    .focus-activity { display:block; color:#8de8dc; font:700 12px "Courier New",monospace; }
+    .focus-detail { display:block; margin-top:6px; color:#d1c9df; font:11px/1.4 "Courier New",monospace; overflow-wrap:anywhere; }
+    .empty { margin:0; padding:12px; border:1px dashed #575574; color:var(--muted); font:11px/1.5 "Courier New",monospace; }
+    .queue-list { display:grid; gap:1px; background:#4d4b6d; border:1px solid #4d4b6d; }
     .queue-list:empty { display:none; }
     .queue-item { display:flex; gap:10px; padding:9px 10px; background:var(--light); font-size:11px; }
-    .queue-number { color:#997b3e; }
-    .guide { background:#eae1ce; }
-    .guide p { margin:0 0 9px; color:#5e5651; font-size:11px; line-height:1.5; }
+    .queue-number { color:#f8be6a; }
+    .guide { background:#242341; }
+    .guide p { margin:0 0 9px; color:#c9c1d8; font-size:11px; line-height:1.5; }
     .command-code { display:flex; flex-wrap:wrap; gap:6px; }
-    .command-code code { border:1px solid #c6b99f; background:#f9f4e9; padding:5px 7px; font:11px "Courier New",monospace; }
-    .crew { grid-column:1 / -1; min-width:0; display:flex; align-items:stretch; background:#e9dfcd; border-top:5px solid var(--night); }
-    .crew-heading { flex:0 0 126px; padding:15px 12px 12px 18px; border-right:1px solid #bfb29f; }
+    .command-code code { border:1px solid #776084; background:#342e50; color:#ffcf9a; padding:5px 7px; font:11px "Courier New",monospace; }
+    .crew { grid-column:1 / -1; min-width:0; display:flex; align-items:stretch; background:#171a35; border-top:5px solid #0b0e20; }
+    .crew-heading { flex:0 0 126px; padding:15px 12px 12px 18px; border-right:1px solid #514c70; }
     .crew-heading h2 { margin:2px 0 6px; font-size:14px; line-height:1.1; text-transform:uppercase; }
     .crew-heading p { margin:0; color:var(--muted); font:10px/1.4 "Courier New",monospace; }
-    .crew-list { display:flex; flex:1; gap:7px; min-width:0; overflow-x:auto; padding:8px; scrollbar-color:#b5a68b transparent; }
-    .crew-card { position:relative; display:flex; align-items:center; gap:9px; flex:1 0 147px; max-width:220px; min-width:0; padding:9px; background:#fffaf0; border:1px solid #bbad98; box-shadow:2px 2px 0 #c6bba9; }
-    .crew-card::after { content:""; position:absolute; inset:auto 0 0; height:3px; background:var(--room-color,#9faca0); }
-    .crew-avatar { flex:none; display:grid; place-items:center; width:39px; height:47px; background:#dce4da; border:1px solid #aaad9f; image-rendering:pixelated; }
+    .crew-list { display:flex; flex:1; gap:7px; min-width:0; overflow-x:auto; padding:8px; scrollbar-color:#696482 transparent; }
+    .crew-card { position:relative; display:flex; align-items:center; gap:9px; flex:1 0 147px; max-width:220px; min-width:0; padding:9px; background:#2a2b4c; border:1px solid #625777; box-shadow:2px 2px 0 #0d1026; }
+    .crew-card::after { content:""; position:absolute; inset:auto 0 0; height:3px; background:var(--room-color,#c6a2f6); }
+    .crew-avatar { flex:none; display:grid; place-items:center; width:39px; height:47px; background:#414266; border:1px solid #777291; image-rendering:pixelated; }
     .crew-avatar canvas { width:30px; height:35px; image-rendering:pixelated; }
-    .crew-avatar.empty-avatar { color:#857f78; font:20px "Courier New",monospace; }
+    .crew-avatar.empty-avatar { color:#aaa4c2; font:20px "Courier New",monospace; }
     .crew-copy { min-width:0; }
     .crew-name { display:block; margin-bottom:4px; font-size:11px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .crew-meta { display:block; color:var(--muted); font-size:9px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-    .crew-status { display:block; margin-top:6px; font:10px "Courier New",monospace; color:#4e765a; }
-    .crew-card[data-state="blocked"] .crew-status { color:#a05952; }
-    .crew-card[data-state="free"] .crew-status { color:#726b65; }
-    :focus-visible { outline:3px solid #4a90d9; outline-offset:3px; }
-    @media (max-width:960px) { .app { display:flex; flex-direction:column; height:auto; min-height:100dvh; overflow:visible; } .floor-stage { height:min(65vw,600px); min-height:250px; } .command-center { border-left:0; border-top:4px solid #e4d8c5; box-shadow:none; } .center-scroll { overflow:visible; } .crew { order:2; min-height:126px; } }
+    .crew-status { display:block; margin-top:6px; font:10px "Courier New",monospace; color:#8de8dc; }
+    .crew-card[data-state="blocked"] .crew-status { color:#ff9e9b; }
+    .crew-card[data-state="free"] .crew-status { color:#b8b2cd; }
+    :focus-visible { outline:3px solid #81e8da; outline-offset:3px; }
+    @media (max-width:960px) { .app { display:flex; flex-direction:column; height:auto; min-height:100dvh; overflow:visible; } .floor-stage { height:min(65vw,600px); min-height:250px; } .command-center { border-left:0; border-top:4px solid #8c5d88; box-shadow:none; } .center-scroll { overflow:visible; } .crew { order:2; min-height:126px; } }
     @media (max-width:540px) { .floor-header { padding:12px 15px; } .floor-meta { font-size:8px; } .floor-stage { display:block; padding:8px; height:440px; overflow-x:auto; overflow-y:hidden; } #floor { width:720px; height:420px; max-width:none; } .floor-footer { padding:0 15px; font-size:9px; } .metric { padding:12px 10px; } .metric-value { font-size:19px; } .metric-value.money { font-size:14px; } .crew-heading { flex-basis:100px; padding-left:10px; } }
   </style>
 </head>
 <body>
   <div class="app">
     <main class="floor-panel" aria-label="Denah kantor live">
-      <header class="floor-header"><div><p class="eyebrow">Live office / lantai 01</p><h1>Office<span>Code</span> HQ</h1></div><span id="floorMeta" class="floor-meta">Memuat denah…</span></header>
-      <div class="floor-stage"><canvas id="floor" width="960" height="560" role="img" aria-label="Denah kantor dengan ruang, meja, dan status agen live"></canvas></div>
-      <div class="floor-footer"><span>Satu kantor · agen bergerak mengikuti aktivitas OpenCode</span><strong id="lastSync">Menunggu sinkronisasi</strong></div>
+      <header class="floor-header"><div><p class="eyebrow">Studio malam / siaran langsung</p><h1>Office<span>Code</span> Studio</h1></div><span id="floorMeta" class="floor-meta">Memuat studio…</span></header>
+      <div class="floor-stage"><canvas id="floor" width="960" height="560" role="img" aria-label="Studio kantor dengan agen, meja kerja, dan aktivitas OpenCode langsung"></canvas></div>
+      <div class="floor-footer"><span>Satu studio · agen bergerak mengikuti aktivitas OpenCode</span><strong id="lastSync">Menunggu sinkronisasi</strong></div>
     </main>
     <aside class="command-center" aria-label="Pusat informasi kantor">
-      <header class="command-header"><div class="command-title"><div><h2>Command center</h2><p class="command-subtitle">Pantau kerja agen dari satu tempat.</p></div><span class="view-tag">LIVE VIEW</span></div><span id="connection" class="connection" data-state="offline" role="status">Menghubungkan…</span></header>
+      <header class="command-header"><div class="command-title"><div><h2>Pusat aktivitas</h2><p class="command-subtitle">Lihat alur kerja agen di studio.</p></div><span class="view-tag">LIVE</span></div><span id="connection" class="connection" data-state="offline" role="status">Menghubungkan…</span></header>
       <div id="activityTracker" class="activity-tracker" aria-label="Aktivitas agen saat ini" hidden><span class="activity-chip" data-activity="thinking">◌ PIKIR</span><span class="activity-chip" data-activity="reading">▤ BACA</span><span class="activity-chip" data-activity="editing">✎ EDIT</span><span class="activity-chip" data-activity="web-search">◎ WEB</span><span class="activity-chip" data-activity="terminal">&gt;_ TERM</span><span class="activity-chip" data-activity="approval">! IZIN</span></div>
-      <div class="metrics" aria-label="Ringkasan kantor"><div class="metric"><span class="metric-label">Aktif</span><span id="statActive" class="metric-value">—</span><span class="metric-unit">agen bekerja</span></div><div class="metric"><span class="metric-label">Antre</span><span id="statQueue" class="metric-value">—</span><span class="metric-unit">tugas menunggu</span></div><div class="metric"><span class="metric-label">Spend</span><span id="statSpent" class="metric-value money">—</span><span class="metric-unit">USD hari ini · est.</span></div></div>
+      <div class="metrics" aria-label="Ringkasan kantor"><div class="metric"><span class="metric-label">Aktif</span><span id="statActive" class="metric-value">—</span><span class="metric-unit">agen bekerja</span></div><div class="metric"><span class="metric-label">Antre</span><span id="statQueue" class="metric-value">—</span><span class="metric-unit">tugas menunggu</span></div><div class="metric"><span class="metric-label">Biaya</span><span id="statSpent" class="metric-value money">—</span><span class="metric-unit">USD hari ini · est.</span></div></div>
       <div class="center-scroll">
         <section id="focusSection" class="panel-section focus-card" aria-labelledby="focusHeading" hidden><div class="section-heading"><h3 id="focusHeading">Sedang dikerjakan</h3><span id="focusStation">Siaga</span></div><div class="focus-body"><span id="focusRole" class="focus-role">Agen OpenCode</span><span id="focusTask" class="focus-task">Menunggu sesi kerja</span><span id="focusActivity" class="focus-activity">Belum ada aktivitas</span><span id="focusDetail" class="focus-detail">Mulai mengerjakan fitur di OpenCode.</span></div></section>
         <section class="panel-section" aria-labelledby="activityTitle"><div class="section-heading"><h3 id="activityTitle">Aktivitas terbaru</h3><span id="activityCount">0 run</span></div><ul id="runs" class="activity-list" aria-live="polite"><li class="empty">Belum ada aktivitas. Jalankan tugas dari OpenCode.</li></ul></section>
@@ -114,7 +114,7 @@
         <section class="panel-section guide" aria-labelledby="guideTitle"><div class="section-heading"><h3 id="guideTitle">Dari OpenCode</h3><span>Perintah</span></div><p>Buka URL dashboard dengan <code>/dashboard</code>. Ruang, agen, dan aktivitas mengikuti event OpenCode yang sedang berjalan.</p><div class="command-code"><code>/dashboard</code></div></section>
       </div>
     </aside>
-    <section class="crew" aria-labelledby="crewTitle"><div class="crew-heading"><span class="eyebrow">Crew deck</span><h2 id="crewTitle">Meja agen</h2><p id="crewCount">Memuat…</p></div><ul id="crew" class="crew-list" aria-live="polite"></ul></section>
+    <section class="crew" aria-labelledby="crewTitle"><div class="crew-heading"><span class="eyebrow">Tim studio</span><h2 id="crewTitle">Agen di lantai</h2><p id="crewCount">Memuat…</p></div><ul id="crew" class="crew-list" aria-live="polite"></ul></section>
   </div>
   <script src="/app.js" defer></script>
 </body>

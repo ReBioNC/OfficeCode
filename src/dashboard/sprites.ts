@@ -5,19 +5,19 @@
 export type PixelMap = string[];
 export type FrameName = "idle" | "walkA" | "walkB" | "work";
 
-export const INK = "#262033";
-export const SKIN = "#F2C297";
-export const HAIR = "#4A3226";
-export const PANTS = "#3A4A6B";
-export const SHOE = "#262033";
-export const EYE = "#262033";
-export const WOOD = "#A06A35";
-export const WOOD_DARK = "#7C4F24";
-export const SCREEN = "#9FF3FF";
-export const MONITOR = "#2E3440";
-export const KEY = "#D8DEE9";
-export const POT = "#C96F4A";
-export const LEAF = "#3F8F5F";
+export const INK = "#15172F";
+export const SKIN = "#F2C19E";
+export const HAIR = "#35253F";
+export const PANTS = "#34345D";
+export const SHOE = "#15172F";
+export const EYE = "#15172F";
+export const WOOD = "#CB7C78";
+export const WOOD_DARK = "#8A506D";
+export const SCREEN = "#81E8DA";
+export const MONITOR = "#292948";
+export const KEY = "#DED9EE";
+export const POT = "#D78C76";
+export const LEAF = "#6FD3AA";
 
 export type Palette = Record<string, string>;
 
@@ -25,42 +25,50 @@ export const BASE_PALETTE: Palette = {
   O: INK,
   S: SKIN,
   H: HAIR,
-  C: "#E0A83C",
+  C: "#F8BE6A",
   P: PANTS,
   W: SHOE,
   E: EYE,
 };
 
 const ROLE_SHIRTS: Record<string, string> = {
-  build: "#4A90D9",
-  plan: "#B694DC",
-  explore: "#46B5A5",
-  general: "#D9A15A",
-  opencode: "#E0A83C",
-  researcher: "#46B5A5",
-  architect: "#B694DC",
-  tester: "#61B782",
-  writer: "#D58CB1",
-  debugger: "#E27E73",
-  security: "#C99D55",
-  "frontend-dev": "#4A90D9",
-  "backend-dev": "#9B51E0",
-  "api-dev": "#2FA8A0",
-  "database-dev": "#2F7B4F",
-  "uiux-designer": "#E08BB8",
-  "qa-engineer": "#27AE60",
-  reviewer: "#C9A227",
-  devops: "#E08A3C",
-  "docs-writer": "#8A8FA3",
-  pm: "#E05C5C",
+  build: "#FF827D",
+  plan: "#C6A2F6",
+  explore: "#67DCCB",
+  general: "#F8BE6A",
+  opencode: "#F8BE6A",
+  researcher: "#67DCCB",
+  architect: "#C6A2F6",
+  tester: "#8ED9A2",
+  writer: "#EAA1C4",
+  debugger: "#FF827D",
+  security: "#F8BE6A",
+  "frontend-dev": "#FF827D",
+  "backend-dev": "#B49CF0",
+  "api-dev": "#67DCCB",
+  "database-dev": "#8ED9A2",
+  "uiux-designer": "#EAA1C4",
+  "qa-engineer": "#8ED9A2",
+  reviewer: "#F8BE6A",
+  devops: "#F29C75",
+  "docs-writer": "#A7ADD5",
+  pm: "#FF827D",
 };
 
 export function shirtPalette(role: string): Palette {
   const key = role.toLowerCase();
-  const colors = ["#4A90D9", "#B694DC", "#46B5A5", "#D9A15A", "#D58CB1", "#E27E73"];
+  const colors = ["#FF827D", "#C6A2F6", "#67DCCB", "#F8BE6A", "#EAA1C4", "#F29C75"];
   let hash = 0;
   for (const char of key) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
   return { ...BASE_PALETTE, C: ROLE_SHIRTS[key] ?? colors[hash % colors.length] };
+}
+
+export function agentPalette(role: string, identity: string): Palette {
+  let hash = 0;
+  for (const char of identity) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  const skins = ["#F2C19E", "#DCA77E", "#B98164", "#805B57", "#F7D7B4"];
+  const hairs = ["#35253F", "#6A3F4B", "#A86350", "#27283D", "#D8A066"];
+  return { ...shirtPalette(role), S: skins[hash % skins.length], H: hairs[(hash >>> 3) % hairs.length] };
 }
 
 const HEAD: PixelMap = [
@@ -183,9 +191,9 @@ export const PRINTER_MAP: PixelMap = [
 
 export const PRINTER_PALETTE: Palette = {
   O: INK,
-  W: "#9AA0B4",
-  G: "#7FE0C3",
-  P: "#FFFFFF",
+  W: "#8F92C2",
+  G: "#81E8DA",
+  P: "#F5E8D7",
 };
 
 export const BOARD_MAP: PixelMap = [
@@ -201,12 +209,12 @@ export const BOARD_MAP: PixelMap = [
 
 export const BOARD_PALETTE: Palette = {
   O: INK,
-  W: "#F8FAFC",
-  Y: "#F2D24B",
+  W: "#EEE3D6",
+  Y: "#F8BE6A",
   G: LEAF,
-  B: "#7FB2E5",
-  R: "#E05C5C",
-  T: "#9AA0B4",
+  B: "#8EA8F1",
+  R: "#FF827D",
+  T: "#969AC4",
 };
 
 export const RACK_MAP: PixelMap = [
@@ -230,7 +238,7 @@ export const RACK_PALETTE: Palette = {
   O: INK,
   M: MONITOR,
   G: SCREEN,
-  R: "#E05C5C",
+  R: "#FF827D",
 };
 
 export const SOFA_MAP: PixelMap = [
@@ -245,8 +253,8 @@ export const SOFA_MAP: PixelMap = [
 
 export const SOFA_PALETTE: Palette = {
   O: INK,
-  A: "#2F6B4F",
-  C: "#48A06B",
+  A: "#9A4F70",
+  C: "#E9859A",
 };
 
 export const TABLE_MAP: PixelMap = [

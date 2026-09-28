@@ -40,7 +40,7 @@ When OpenCode loads the project, the plugin starts the dashboard server automati
 
 ### What the dashboard shows
 
-All active OpenCode sessions share one pixel-art office. Each visible agent moves between the meeting table, library, workstations, web desk, terminal, and approval area as OpenCode reports work: planning, reading files, editing code, searching the web or codebase, running terminal commands, coordinating tools, and waiting for permission. The sidebar shows each OpenCode agent name, its temporary work role, task title, and latest action. When no session is active, the most recently completed session remains visible.
+All active OpenCode sessions share one pixel-art studio. Its original night palette, sunset skyline, colorful work rugs, idea corner, planning atelier, digital library, workstations, and coffee area are drawn in code. Each visible agent moves to the relevant station as OpenCode reports work: planning, reading files, editing code, searching the web or codebase, running terminal commands, coordinating tools, and waiting for permission. Agents have stable, varied skin and hair colors while their shirt color follows their role. The sidebar shows each OpenCode agent name, its temporary work role, task title, and latest action. When no session is active, the most recently completed session remains visible.
 
 These states come from OpenCode session, message, tool, and permission events. The plugin does not make extra model requests for animation or role labels. Custom OpenCode agent names are shown as supplied by OpenCode and receive a stable avatar color.
 
