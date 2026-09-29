@@ -21,6 +21,10 @@ const allMaps: Array<[string, PixelMap]> = [
   ["walkA", CHAR_FRAMES.walkA],
   ["walkB", CHAR_FRAMES.walkB],
   ["work", CHAR_FRAMES.work],
+  ["typeA", CHAR_FRAMES.typeA],
+  ["typeB", CHAR_FRAMES.typeB],
+  ["talkA", CHAR_FRAMES.talkA],
+  ["talkB", CHAR_FRAMES.talkB],
   ["desk", DESK_MAP],
   ["computer", COMPUTER_MAP],
   ["printer", PRINTER_MAP],
@@ -39,7 +43,7 @@ describe("sprite maps", () => {
   it("character frames share the same dimensions", () => {
     const h = CHAR_FRAMES.idle.length;
     const w = CHAR_FRAMES.idle[0].length;
-    for (const f of [CHAR_FRAMES.walkA, CHAR_FRAMES.walkB, CHAR_FRAMES.work]) {
+    for (const f of Object.values(CHAR_FRAMES)) {
       assert.equal(f.length, h);
       assert.ok(f.every((r) => r.length === w));
     }

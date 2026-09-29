@@ -3,7 +3,7 @@
 // share dimensions (pinned by test/sprites.test.ts).
 
 export type PixelMap = string[];
-export type FrameName = "idle" | "walkA" | "walkB" | "work";
+export type FrameName = "idle" | "walkA" | "walkB" | "work" | "typeA" | "typeB" | "talkA" | "talkB";
 
 export const INK = "#15172F";
 export const SKIN = "#F2C19E";
@@ -128,11 +128,60 @@ const TORSO_WORK: PixelMap = [
   "..OCCCCCCO..",
 ];
 
+// The monitor is north of the chair, so typing frames show the back of the head.
+const HEAD_AT_COMPUTER: PixelMap = [
+  "....OOOO....",
+  "...OHHHHO...",
+  "..OHHHHHHO..",
+  "..OHHHHHHO..",
+  "..OSHHHHSO..",
+  "...OSSSSO...",
+];
+
+const TORSO_TYPE_A: PixelMap = [
+  "..SOCCCCOS..",
+  ".SSOCCCCOSS.",
+  "..OCCCCCCO..",
+  "...OCCCCO...",
+];
+
+const TORSO_TYPE_B: PixelMap = [
+  ".SSOCCCCOS..",
+  "..SOCCCCOSS.",
+  "..OCCCCCCO..",
+  "...OCCCCO...",
+];
+
+const TORSO_TALK_A: PixelMap = [
+  "..OOCCCCOO..",
+  ".SOCCCCCCOS.",
+  "SSOCCCCCCO..",
+  "..OCCCCCCO..",
+];
+
+const TORSO_TALK_B: PixelMap = [
+  "..OOCCCCOO..",
+  ".SOCCCCCCOS.",
+  "..OCCCCCCOSS",
+  "..OCCCCCCO..",
+];
+
+const LEGS_SEATED: PixelMap = [
+  "..OPPPPPPO..",
+  "..OPPPPPPO..",
+  "..OWO..OWO..",
+  "............",
+];
+
 export const CHAR_FRAMES: Record<FrameName, PixelMap> = {
   idle: [...HEAD, ...TORSO_IDLE, ...LEGS_IDLE],
   walkA: [...HEAD, ...TORSO_IDLE, ...LEGS_WIDE],
   walkB: [...HEAD, ...TORSO_IDLE, ...LEGS_NARROW],
   work: [...HEAD, ...TORSO_WORK, ...LEGS_IDLE],
+  typeA: [...HEAD_AT_COMPUTER, ...TORSO_TYPE_A, ...LEGS_SEATED],
+  typeB: [...HEAD_AT_COMPUTER, ...TORSO_TYPE_B, ...LEGS_SEATED],
+  talkA: [...HEAD, ...TORSO_TALK_A, ...LEGS_SEATED],
+  talkB: [...HEAD, ...TORSO_TALK_B, ...LEGS_SEATED],
 };
 
 export const DESK_MAP: PixelMap = [
