@@ -1,5 +1,6 @@
 import { deskPoint, roomRect, type Rect } from "./layout";
 import { displayWorkRole } from "./work-role";
+import { stepToward, type Point } from "./agent-motion";
 import {
   BOARD_MAP, BOARD_PALETTE, CHAIR_MAP, CHAIR_PALETTE, CHAR_FRAMES,
   COMPUTER_MAP, COMPUTER_PALETTE, DESK_MAP, DESK_PALETTE, INK, PLANT_MAP, PLANT_PALETTE,
@@ -86,6 +87,7 @@ let latestFetchOkay = false;
 let refreshPending = false;
 let refreshing = false;
 let retryTimer: number | undefined;
+const agentPositions = new Map<string, { point: Point; tick: number }>();
 
 function short(value: string, max: number): string {
   const clean = value.replace(/\s+/g, " ").trim();
@@ -528,6 +530,13 @@ function drawLounge(): void {
 
 type OfficeStation = "reading" | "editing" | "web-search" | "terminal" | "thinking" | "delegating" | "approval" | "lounge";
 
+const WORK_DESKS: ReadonlyArray<readonly [number, number]> = [
+  [208, 342], [346, 355], [77, 348], [452, 413], [264, 431], [90, 440],
+];
+const WEB_DESK: readonly [number, number] = [809, 179];
+const OPS_DESK: readonly [number, number] = [741, 424];
+const PLANNING_CHAIRS = [339, 445, 392, 498];
+
 function stationFor(run: Run): OfficeStation {
   if (run.state === "done") return "lounge";
   if (run.state === "blocked") return "approval";
@@ -607,7 +616,7 @@ function drawLamp(x: number, y: number, tick: number): void {
   ctx.globalAlpha = 1;
 }
 
-function drawOfficeFurniture(tick: number, active: Set<OfficeStation>): void {
+function drawOfficeFurniture(tick: number, active: Set<OfficeStation>, editingCount: number): void {
   // Color-blocked rugs organize one uninterrupted studio floor.
   drawRug(49, 124, 225, 159, "#a05f8f", "#493455");
   drawRug(291, 124, 295, 159, "#9c86ce", "#45406b");
@@ -664,8 +673,8 @@ function drawOfficeFurniture(tick: number, active: Set<OfficeStation>): void {
   drawSprite(ctx, PLANT_MAP, PLANT_PALETTE, 888, 246, 2);
 
   // Staggered workstations, a blueprint board, stationery and cables.
-  for (const [x, y] of [[77, 348], [208, 342], [346, 355], [90, 440], [264, 431], [452, 413]]) {
-    officeDesk(x, y, active.has("editing") && x === 208, tick);
+  for (const [index, [x, y]] of WORK_DESKS.entries()) {
+    officeDesk(x, y, index < editingCount, tick);
   }
   drawSprite(ctx, BOARD_MAP, BOARD_PALETTE, 493, 330, 3);
   ctx.fillStyle = "#f8be6a"; ctx.fillRect(373, 332, 20, 14);
@@ -712,41 +721,100 @@ function drawWorkRoleBadge(role: string, x: number, y: number, scale: number, co
   ctx.font = 'bold 10px "Courier New", monospace';
   const width = Math.ceil(ctx.measureText(caption).width) + 16;
   const left = snap(Math.max(42, Math.min(x + 6 * scale - width / 2, 918 - width)));
-  const top = snap(Math.min(470, y + 14 * scale + 2));
+  const top = snap(Math.min(500, y + 14 * scale + 2));
   ctx.fillStyle = "#13152d"; ctx.fillRect(left + 2, top + 2, width, 17);
   ctx.fillStyle = "#2b2b4d"; ctx.fillRect(left, top, width, 17);
   ctx.fillStyle = color; ctx.fillRect(left, top, 4, 17);
   textOnCanvas(caption, left + 9, top + 3, COLORS.light, 10);
 }
 
+function seatedStation(station: OfficeStation): boolean {
+  return station === "editing" || station === "web-search" || station === "terminal"
+    || station === "thinking" || station === "delegating";
+}
+
+function takeComputerDesk(station: OfficeStation, used: Set<string>): readonly [number, number] {
+  const desks = station === "web-search" ? [WEB_DESK, ...WORK_DESKS, OPS_DESK]
+    : station === "terminal" ? [OPS_DESK, ...WORK_DESKS, WEB_DESK]
+      : [...WORK_DESKS, WEB_DESK, OPS_DESK];
+  const desk = desks.find(([x, y]) => !used.has(`${x},${y}`)) ?? desks[0];
+  used.add(`${desk[0]},${desk[1]}`);
+  return desk;
+}
+
+function computerSeatPoint(station: OfficeStation, scale: number, used: Set<string>): Point {
+  const [x, y] = takeComputerDesk(station, used);
+  return { x: x + (scale === 4 ? 5 : 9), y: y + 35 };
+}
+
+function stationTarget(station: OfficeStation, slot: number): Point {
+  if (station === "thinking" || station === "delegating") {
+    return { x: PLANNING_CHAIRS[slot % PLANNING_CHAIRS.length] - 1, y: 238 };
+  }
+  if (station === "reading") return { x: 680 - slot * 48, y: 220 };
+  if (station === "approval") return { x: 615 + slot * 46, y: 385 };
+  return { x: 660 + slot * 46, y: 387 };
+}
+
+function drawOccupiedChair(x: number, y: number, scale: number, front: boolean): void {
+  const width = 12 * scale;
+  ctx.fillStyle = front ? "#15172f" : "#654764";
+  if (front) {
+    ctx.fillRect(x - 5, y + 8 * scale, 5, 15);
+    ctx.fillRect(x + width, y + 8 * scale, 5, 15);
+    ctx.fillStyle = "#d6919a";
+    ctx.fillRect(x - 4, y + 8 * scale + 2, 3, 10);
+    ctx.fillRect(x + width + 1, y + 8 * scale + 2, 3, 10);
+  } else {
+    ctx.fillRect(x - 5, y + 7 * scale, width + 10, 7 * scale - 3);
+    ctx.fillStyle = "#a76b8c";
+    ctx.fillRect(x - 2, y + 7 * scale + 3, width + 4, 5 * scale - 2);
+  }
+}
+
 function drawOfficeAgents(sessions: Run[], tick: number): void {
-  const spots: Record<OfficeStation, { x: number; y: number }> = {
-    reading: { x: 680, y: 220 },
-    "web-search": { x: 819, y: 221 },
-    thinking: { x: 417, y: 211 },
-    delegating: { x: 190, y: 207 },
-    editing: { x: 221, y: 379 },
-    terminal: { x: 765, y: 420 },
-    approval: { x: 626, y: 385 },
-    lounge: { x: 660, y: 387 },
-  };
   const stationOccupancy = new Map<OfficeStation, number>();
+  const usedComputerDesks = new Set<string>();
+  const visibleIds = new Set(sessions.map((run) => run.sessionId ?? run.id));
+  for (const id of agentPositions.keys()) if (!visibleIds.has(id)) agentPositions.delete(id);
+  const planningCount = sessions.filter((run) => ["thinking", "delegating"].includes(stationFor(run))).length;
+  if (planningCount > 1 && sessions.some((run) => stationFor(run) === "delegating")) {
+    ctx.fillStyle = tick % 2 === 0 ? "#f8be6a" : "#cbb5f1";
+    for (let dot = 0; dot < 3; dot++) ctx.fillRect(415 + dot * 12, 210 + (dot === tick % 3 ? -4 : 0), 5, 5);
+  }
   for (const run of sessions) {
     const station = stationFor(run);
-    const slot = stationOccupancy.get(station) ?? 0;
-    stationOccupancy.set(station, slot + 1);
-    const base = spots[station];
-    const spacing = station === "editing" ? 80 : 50;
-    const x = base.x + (base.x > 720 ? -1 : 1) * (slot % 3) * spacing;
-    const y = base.y - Math.floor(slot / 3) * 30 + (tick % 2 === 0 ? 0 : 1);
-    const scale = sessions.length <= 2 ? 4 : 3;
+    const occupancyKey = station === "thinking" || station === "delegating" ? "thinking" : station;
+    const slot = stationOccupancy.get(occupancyKey) ?? 0;
+    stationOccupancy.set(occupancyKey, slot + 1);
+    const scale = station === "thinking" || station === "delegating" ? 3 : sessions.length <= 2 ? 4 : 3;
+    const target = station === "editing" || station === "web-search" || station === "terminal"
+      ? computerSeatPoint(station, scale, usedComputerDesks)
+      : stationTarget(station, slot);
+    const id = run.sessionId ?? run.id;
+    const prior = agentPositions.get(id);
+    const point = !prior || reducedMotion ? target : prior.tick === tick ? prior.point : stepToward(prior.point, target, 48);
+    agentPositions.set(id, { point, tick });
+    const x = snap(point.x), y = snap(point.y);
+    const arrived = Math.hypot(point.x - target.x, point.y - target.y) < 2;
+    const seated = arrived && seatedStation(station);
     const activity = activityOf(run);
     const workRole = displayWorkRole(run, sessions.length === 1);
-    const palette = agentPalette(workRole, run.sessionId ?? run.id);
+    const palette = agentPalette(workRole, id);
     ctx.fillStyle = activity.color;
     ctx.fillRect(x - 5, y + 14 * scale - 4, 12 * scale + 10, 4);
-    drawSprite(ctx, CHAR_FRAMES[frameForState(run.state, tick)], palette, x, y, scale);
-    if (run.state === "thinking") {
+    if (seated) drawOccupiedChair(x, y, scale, false);
+    const frame = !arrived ? (tick % 2 === 0 ? "walkA" : "walkB")
+      : station === "thinking" || station === "delegating" ? (tick % 2 === 0 ? "talkA" : "talkB")
+      : seated ? (tick % 2 === 0 ? "typeA" : "typeB") : frameForState(run.state, tick);
+    drawSprite(ctx, CHAR_FRAMES[frame], palette, x, y, scale);
+    if (seated) drawOccupiedChair(x, y, scale, true);
+    if (station === "reading" && arrived) {
+      ctx.fillStyle = "#fff1df"; ctx.fillRect(x + 8, y + 27, 22, 14);
+      ctx.fillStyle = "#8ea8f1"; ctx.fillRect(x + 18, y + 29, 2, 10);
+      ctx.fillStyle = "#776f9d"; ctx.fillRect(x + 11, y + 32 + tick % 2 * 3, 6, 2);
+    }
+    if (run.state === "thinking" && planningCount === 1 && arrived) {
       ctx.fillStyle = "#fff7dd";
       for (let dot = 0; dot < 3; dot++) ctx.fillRect(x + 36 + dot * 7, y - 10 - (tick + dot) % 2 * 3, 4, 4);
     }
@@ -758,7 +826,7 @@ function drawOfficeAgents(sessions: Run[], tick: number): void {
 function drawSessionFloor(tick: number): void {
   const sessions = visibleAgents();
   const active = new Set(sessions.map(stationFor));
-  drawOfficeFurniture(tick, active);
+  drawOfficeFurniture(tick, active, sessions.filter((run) => stationFor(run) === "editing").length);
   if (sessions.length === 0) {
     plate("STUDIO SIAGA", 384, 377, "#f8be6a");
     textOnCanvas("Mulai sesi OpenCode untuk melihat agen bekerja.", 282, 411, COLORS.light, 12);
@@ -766,11 +834,11 @@ function drawSessionFloor(tick: number): void {
   }
   drawOfficeAgents(sessions, tick);
   const primary = sessions[0];
-  ctx.fillStyle = "#1b1d3b"; ctx.fillRect(42, 489, 610, 26);
-  ctx.fillStyle = activityOf(primary).color; ctx.fillRect(42, 489, 5, 26);
-  textOnCanvas(short(primary.prompt || "Sesi OpenCode", 47), 54, 495, COLORS.light, 11);
+  ctx.fillStyle = "#1b1d3b"; ctx.fillRect(42, 530, 610, 16);
+  ctx.fillStyle = activityOf(primary).color; ctx.fillRect(42, 530, 5, 16);
+  textOnCanvas(short(primary.prompt || "Sesi OpenCode", 47), 54, 532, COLORS.light, 11);
   const activeCount = sessions.filter((run) => run.state !== "done" && run.state !== "blocked").length;
-  textOnCanvas(activeCount + " AGEN AKTIF", 792, 494, COLORS.light, 11);
+  textOnCanvas(activeCount + " AGEN AKTIF", 792, 532, COLORS.light, 11);
 }
 
 function draw(): void {
