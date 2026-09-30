@@ -1,5 +1,6 @@
 import { deskPoint, roomRect, type Rect } from "./layout";
 import { displayWorkRole } from "./work-role";
+import { selectVisibleAgents } from "./live-agents";
 import { stepToward, type Point } from "./agent-motion";
 import {
   BOARD_MAP, BOARD_PALETTE, CHAIR_MAP, CHAIR_PALETTE, CHAR_FRAMES,
@@ -99,14 +100,7 @@ function label(state: string): string {
 }
 
 function visibleAgents(): Run[] {
-  const latest = new Map<string, Run>();
-  for (const run of runs) {
-    if (!run.sessionId) continue;
-    latest.delete(run.sessionId);
-    latest.set(run.sessionId, run);
-  }
-  const current = [...latest.values()].filter((run) => run.state !== "done" && run.state !== "blocked");
-  return current.length ? current : [...latest.values()].slice(-1);
+  return selectVisibleAgents(runs);
 }
 
 function activityOf(run: Run): { label: string; persona: string; station: string; color: string } {
@@ -828,6 +822,7 @@ function drawSessionFloor(tick: number): void {
   const active = new Set(sessions.map(stationFor));
   drawOfficeFurniture(tick, active, sessions.filter((run) => stationFor(run) === "editing").length);
   if (sessions.length === 0) {
+    agentPositions.clear();
     plate("STUDIO SIAGA", 384, 377, "#f8be6a");
     textOnCanvas("Mulai sesi OpenCode untuk melihat agen bekerja.", 282, 411, COLORS.light, 12);
     return;
