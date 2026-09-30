@@ -1,7 +1,8 @@
 import { deskPoint, roomRect, type Rect } from "./layout";
 import { displayWorkRole } from "./work-role";
 import { selectVisibleAgents } from "./live-agents";
-import { stepToward, type Point } from "./agent-motion";
+import { advanceRoute, planRoute, type Direction, type Point } from "./agent-motion";
+import { OPS_DESK, STUDIO_DOORS, STUDIO_OBSTACLES, STUDIO_WALLS, WEB_DESK, WORK_DESKS } from "./studio-map";
 import {
   BOARD_MAP, BOARD_PALETTE, CHAIR_MAP, CHAIR_PALETTE, CHAR_FRAMES,
   COMPUTER_MAP, COMPUTER_PALETTE, DESK_MAP, DESK_PALETTE, INK, PLANT_MAP, PLANT_PALETTE,
@@ -88,7 +89,7 @@ let latestFetchOkay = false;
 let refreshPending = false;
 let refreshing = false;
 let retryTimer: number | undefined;
-const agentPositions = new Map<string, { point: Point; tick: number }>();
+const agentPositions = new Map<string, { point: Point; target: Point; route: Point[]; tick: number; direction: Direction }>();
 
 function short(value: string, max: number): string {
   const clean = value.replace(/\s+/g, " ").trim();
@@ -524,11 +525,6 @@ function drawLounge(): void {
 
 type OfficeStation = "reading" | "editing" | "web-search" | "terminal" | "thinking" | "delegating" | "approval" | "lounge";
 
-const WORK_DESKS: ReadonlyArray<readonly [number, number]> = [
-  [208, 342], [346, 355], [77, 348], [452, 413], [264, 431], [90, 440],
-];
-const WEB_DESK: readonly [number, number] = [809, 179];
-const OPS_DESK: readonly [number, number] = [741, 424];
 const PLANNING_CHAIRS = [339, 445, 392, 498];
 
 function stationFor(run: Run): OfficeStation {
@@ -710,6 +706,28 @@ function drawAgentBubble(run: Run, x: number, y: number, color: string, lane: nu
   textOnCanvas(text, left + 10, top + 5, "#fff1df", 11);
 }
 
+function drawStudioPartitions(): void {
+  ctx.fillStyle = "#53547b"; ctx.fillRect(49, 287, 865, 12);
+  ctx.fillStyle = "#747093";
+  for (let x = 59; x < 914; x += 28) ctx.fillRect(x, 292, 12, 2);
+  for (const wall of STUDIO_WALLS) {
+    ctx.fillStyle = "#11162c"; ctx.fillRect(wall.x, wall.y - 5, wall.w, wall.h + 5);
+    ctx.fillStyle = "#726084"; ctx.fillRect(wall.x + 1, wall.y - 4, wall.w - 2, wall.h + 2);
+    ctx.fillStyle = "#bd94af"; ctx.fillRect(wall.x + 1, wall.y - 4, wall.w - 2, 2);
+    ctx.fillStyle = "#42465f"; ctx.fillRect(wall.x + 2, wall.y, Math.max(2, wall.w - 4), Math.max(2, wall.h - 2));
+  }
+  for (const door of STUDIO_DOORS) {
+    const open = [...agentPositions.values()].some((agent) => agent.route.length > 0
+      && Math.hypot(agent.point.x - door.x - door.w / 2, agent.point.y - door.y) < 120);
+    const leaf = open ? 7 : door.w / 2 - 4;
+    ctx.fillStyle = "#161b35"; ctx.fillRect(door.x, door.y - 8, 5, 20); ctx.fillRect(door.x + door.w - 5, door.y - 8, 5, 20);
+    ctx.fillStyle = open ? "#91e5d4" : "#9294bf";
+    ctx.fillRect(door.x + 5, door.y - 5, leaf, 10); ctx.fillRect(door.x + door.w - 5 - leaf, door.y - 5, leaf, 10);
+    ctx.fillStyle = "#c4b9d4"; ctx.fillRect(door.x + 5, door.y - 6, leaf, 2); ctx.fillRect(door.x + door.w - 5 - leaf, door.y - 6, leaf, 2);
+    ctx.fillStyle = "#f8be6a"; ctx.fillRect(door.x + 2, door.y + 8, 3, 3); ctx.fillRect(door.x + door.w - 5, door.y + 8, 3, 3);
+  }
+}
+
 function drawWorkRoleBadge(role: string, x: number, y: number, scale: number, color: string): void {
   const caption = short(role.toUpperCase(), 14);
   ctx.font = 'bold 10px "Courier New", monospace';
@@ -743,7 +761,7 @@ function computerSeatPoint(station: OfficeStation, scale: number, used: Set<stri
 
 function stationTarget(station: OfficeStation, slot: number): Point {
   if (station === "thinking" || station === "delegating") {
-    return { x: PLANNING_CHAIRS[slot % PLANNING_CHAIRS.length] - 1, y: 238 };
+    return { x: PLANNING_CHAIRS[slot % PLANNING_CHAIRS.length] - 1, y: 230 };
   }
   if (station === "reading") return { x: 680 - slot * 48, y: 220 };
   if (station === "approval") return { x: 615 + slot * 46, y: 385 };
@@ -787,10 +805,17 @@ function drawOfficeAgents(sessions: Run[], tick: number): void {
       : stationTarget(station, slot);
     const id = run.sessionId ?? run.id;
     const prior = agentPositions.get(id);
-    const point = !prior || reducedMotion ? target : prior.tick === tick ? prior.point : stepToward(prior.point, target, 48);
-    agentPositions.set(id, { point, tick });
-    const x = snap(point.x), y = snap(point.y);
-    const arrived = Math.hypot(point.x - target.x, point.y - target.y) < 2;
+    const feet = { x: target.x + 6 * scale, y: target.y + 13 * scale };
+    let agent = prior ?? { point: feet, target: feet, route: [], tick, direction: "south" as Direction };
+    if (reducedMotion) agent = { ...agent, point: feet, target: feet, route: [] };
+    else if (agent.target.x !== feet.x || agent.target.y !== feet.y) {
+      agent = { ...agent, target: feet, route: planRoute(agent.point, feet, STUDIO_OBSTACLES) ?? [] };
+    }
+    if (agent.tick !== tick && agent.route.length) agent = { ...agent, ...advanceRoute(agent.point, agent.route, 48) };
+    agent.tick = tick;
+    agentPositions.set(id, agent);
+    const x = snap(agent.point.x - 6 * scale), y = snap(agent.point.y - 13 * scale);
+    const arrived = Math.hypot(agent.point.x - feet.x, agent.point.y - feet.y) < 2;
     const seated = arrived && seatedStation(station);
     const activity = activityOf(run);
     const workRole = displayWorkRole(run, sessions.length === 1);
@@ -821,6 +846,7 @@ function drawSessionFloor(tick: number): void {
   const sessions = visibleAgents();
   const active = new Set(sessions.map(stationFor));
   drawOfficeFurniture(tick, active, sessions.filter((run) => stationFor(run) === "editing").length);
+  drawStudioPartitions();
   if (sessions.length === 0) {
     agentPositions.clear();
     plate("STUDIO SIAGA", 384, 377, "#f8be6a");
