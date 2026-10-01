@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   BOARD_MAP,
   CHAR_FRAMES,
+  WALK_FRAMES,
   COMPUTER_MAP,
   DESK_MAP,
   PRINTER_MAP,
@@ -80,5 +81,21 @@ describe("agentPalette", () => {
       { skin: first.S, hair: first.H },
       { skin: agentPalette("build", "session-beta").S, hair: agentPalette("build", "session-beta").H },
     );
+  });
+});
+
+describe("walking frames", () => {
+  it("walks with eight distinct poses and faces the travel direction", () => {
+    for (const frames of Object.values(WALK_FRAMES)) {
+      assert.equal(new Set(frames.map((frame) => frame.join("\n"))).size, 8);
+      for (const map of frames) {
+        assert.equal(validateMap(map).ok, true);
+        assert.equal(map.length, 14);
+        assert.ok(map.every((row) => row.length === 12));
+      }
+    }
+    assert.ok(WALK_FRAMES.south[0].some((row) => row.includes("E")));
+    assert.ok(!WALK_FRAMES.north[0].some((row) => row.includes("E")), "walking north should show the back of the head");
+    assert.deepEqual(WALK_FRAMES.west[0], WALK_FRAMES.east[0].map((row) => [...row].reverse().join("")));
   });
 });

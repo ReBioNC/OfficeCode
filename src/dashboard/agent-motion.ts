@@ -110,6 +110,10 @@ export function advanceRoute(point: Point, route: readonly Point[], distance: nu
   return { point: current, route: remaining, direction };
 }
 
+export function advanceTimedRoute(point: Point, route: readonly Point[], elapsedMs: number): ReturnType<typeof advanceRoute> {
+  return advanceRoute(point, route, Math.max(0, Math.min(80, elapsedMs)) * .12);
+}
+
 export function stepToward(from: Point, to: Point, maxDistance: number): Point {
   const dx = to.x - from.x;
   const dy = to.y - from.y;

@@ -1,13 +1,13 @@
 import { deskPoint, roomRect, type Rect } from "./layout";
 import { displayWorkRole } from "./work-role";
 import { selectVisibleAgents } from "./live-agents";
-import { advanceRoute, planRoute, type Direction, type Point } from "./agent-motion";
+import { advanceTimedRoute, planRoute, type Direction, type Point } from "./agent-motion";
 import { OPS_DESK, STUDIO_DOORS, STUDIO_OBSTACLES, STUDIO_WALLS, WEB_DESK, WORK_DESKS } from "./studio-map";
 import {
   BOARD_MAP, BOARD_PALETTE, CHAIR_MAP, CHAIR_PALETTE, CHAR_FRAMES,
   COMPUTER_MAP, COMPUTER_PALETTE, DESK_MAP, DESK_PALETTE, INK, PLANT_MAP, PLANT_PALETTE,
   PRINTER_MAP, PRINTER_PALETTE, RACK_MAP, RACK_PALETTE,
-  SOFA_MAP, SOFA_PALETTE, TABLE_MAP, TABLE_PALETTE,
+  SOFA_MAP, SOFA_PALETTE, TABLE_MAP, TABLE_PALETTE, WALK_FRAMES,
   agentPalette, drawSprite, frameForState, shirtPalette, snap,
 } from "./sprites";
 
@@ -89,7 +89,14 @@ let latestFetchOkay = false;
 let refreshPending = false;
 let refreshing = false;
 let retryTimer: number | undefined;
-const agentPositions = new Map<string, { point: Point; target: Point; route: Point[]; tick: number; direction: Direction }>();
+const agentPositions = new Map<string, { point: Point; target: Point; route: Point[]; time: number; direction: Direction }>();
+const studioBackground = document.createElement("canvas");
+const backgroundCtx = studioBackground.getContext("2d");
+let studioDirty = true;
+let animationFrame: number | undefined;
+let lastPaint = 0;
+let lastDoorTime = 0;
+const doorOpenness = new Map<string, number>();
 
 function short(value: string, max: number): string {
   const clean = value.replace(/\s+/g, " ").trim();
@@ -122,6 +129,7 @@ function renderConnection(): void {
 }
 
 function renderPanels(): void {
+  studioDirty = true;
   const runById = new Map(runs.map((run) => [run.id, run]));
   const sessions = mirrorOnly ? visibleAgents() : [];
   const focus = sessions[0];
@@ -716,10 +724,18 @@ function drawStudioPartitions(): void {
     ctx.fillStyle = "#bd94af"; ctx.fillRect(wall.x + 1, wall.y - 4, wall.w - 2, 2);
     ctx.fillStyle = "#42465f"; ctx.fillRect(wall.x + 2, wall.y, Math.max(2, wall.w - 4), Math.max(2, wall.h - 2));
   }
+}
+
+function drawStudioDoors(now: number): void {
+  const elapsed = Math.max(0, Math.min(80, now - lastDoorTime));
+  lastDoorTime = now;
   for (const door of STUDIO_DOORS) {
     const open = [...agentPositions.values()].some((agent) => agent.route.length > 0
-      && Math.hypot(agent.point.x - door.x - door.w / 2, agent.point.y - door.y) < 120);
-    const leaf = open ? 7 : door.w / 2 - 4;
+      && Math.hypot(agent.point.x - door.x - door.w / 2, agent.point.y - door.y) < 85);
+    const previous = doorOpenness.get(door.id) ?? 0;
+    const fraction = reducedMotion ? (open ? 1 : 0) : Math.max(0, Math.min(1, previous + (open ? 1 : -1) * elapsed / 160));
+    doorOpenness.set(door.id, fraction);
+    const leaf = snap(door.w / 2 - 4 - fraction * (door.w / 2 - 11));
     ctx.fillStyle = "#161b35"; ctx.fillRect(door.x, door.y - 8, 5, 20); ctx.fillRect(door.x + door.w - 5, door.y - 8, 5, 20);
     ctx.fillStyle = open ? "#91e5d4" : "#9294bf";
     ctx.fillRect(door.x + 5, door.y - 5, leaf, 10); ctx.fillRect(door.x + door.w - 5 - leaf, door.y - 5, leaf, 10);
@@ -754,11 +770,6 @@ function takeComputerDesk(station: OfficeStation, used: Set<string>): readonly [
   return desk;
 }
 
-function computerSeatPoint(station: OfficeStation, scale: number, used: Set<string>): Point {
-  const [x, y] = takeComputerDesk(station, used);
-  return { x: x + (scale === 4 ? 5 : 9), y: y + 35 };
-}
-
 function stationTarget(station: OfficeStation, slot: number): Point {
   if (station === "thinking" || station === "delegating") {
     return { x: PLANNING_CHAIRS[slot % PLANNING_CHAIRS.length] - 1, y: 230 };
@@ -784,7 +795,7 @@ function drawOccupiedChair(x: number, y: number, scale: number, front: boolean):
   }
 }
 
-function drawOfficeAgents(sessions: Run[], tick: number): void {
+function drawOfficeAgents(sessions: Run[], tick: number, now: number): void {
   const stationOccupancy = new Map<OfficeStation, number>();
   const usedComputerDesks = new Set<string>();
   const visibleIds = new Set(sessions.map((run) => run.sessionId ?? run.id));
@@ -800,19 +811,21 @@ function drawOfficeAgents(sessions: Run[], tick: number): void {
     const slot = stationOccupancy.get(occupancyKey) ?? 0;
     stationOccupancy.set(occupancyKey, slot + 1);
     const scale = station === "thinking" || station === "delegating" ? 3 : sessions.length <= 2 ? 4 : 3;
-    const target = station === "editing" || station === "web-search" || station === "terminal"
-      ? computerSeatPoint(station, scale, usedComputerDesks)
+    const computer = station === "editing" || station === "web-search" || station === "terminal"
+      ? takeComputerDesk(station, usedComputerDesks) : undefined;
+    const target = computer
+      ? { x: computer[0] + (scale === 4 ? 5 : 9), y: computer[1] + 35 }
       : stationTarget(station, slot);
     const id = run.sessionId ?? run.id;
     const prior = agentPositions.get(id);
     const feet = { x: target.x + 6 * scale, y: target.y + 13 * scale };
-    let agent = prior ?? { point: feet, target: feet, route: [], tick, direction: "south" as Direction };
+    let agent = prior ?? { point: feet, target: feet, route: [], time: now, direction: "south" as Direction };
     if (reducedMotion) agent = { ...agent, point: feet, target: feet, route: [] };
     else if (agent.target.x !== feet.x || agent.target.y !== feet.y) {
       agent = { ...agent, target: feet, route: planRoute(agent.point, feet, STUDIO_OBSTACLES) ?? [] };
     }
-    if (agent.tick !== tick && agent.route.length) agent = { ...agent, ...advanceRoute(agent.point, agent.route, 48) };
-    agent.tick = tick;
+    if (agent.route.length) agent = { ...agent, ...advanceTimedRoute(agent.point, agent.route, now - agent.time) };
+    agent.time = now;
     agentPositions.set(id, agent);
     const x = snap(agent.point.x - 6 * scale), y = snap(agent.point.y - 13 * scale);
     const arrived = Math.hypot(agent.point.x - feet.x, agent.point.y - feet.y) < 2;
@@ -820,13 +833,21 @@ function drawOfficeAgents(sessions: Run[], tick: number): void {
     const activity = activityOf(run);
     const workRole = displayWorkRole(run, sessions.length === 1);
     const palette = agentPalette(workRole, id);
+    if (computer) {
+      ctx.fillStyle = tick % 2 === 0 ? "#b5fff0" : "#67dccb";
+      ctx.fillRect(computer[0] + 18, computer[1] - 8, 13, 2);
+      ctx.fillRect(computer[0] + 18, computer[1] - 3, 9, 2);
+    }
+    if (station === "approval") {
+      ctx.fillStyle = tick % 2 === 0 ? "#ffd594" : "#ff827d"; ctx.fillRect(613, 347, 8, 53);
+    }
     ctx.fillStyle = activity.color;
     ctx.fillRect(x - 5, y + 14 * scale - 4, 12 * scale + 10, 4);
     if (seated) drawOccupiedChair(x, y, scale, false);
-    const frame = !arrived ? (tick % 2 === 0 ? "walkA" : "walkB")
-      : station === "thinking" || station === "delegating" ? (tick % 2 === 0 ? "talkA" : "talkB")
-      : seated ? (tick % 2 === 0 ? "typeA" : "typeB") : frameForState(run.state, tick);
-    drawSprite(ctx, CHAR_FRAMES[frame], palette, x, y, scale);
+    const frame = !arrived ? WALK_FRAMES[agent.direction][Math.floor(now / 90) % 8]
+      : CHAR_FRAMES[station === "thinking" || station === "delegating" ? (tick % 2 === 0 ? "talkA" : "talkB")
+        : seated ? (tick % 2 === 0 ? "typeA" : "typeB") : frameForState(run.state, tick)];
+    drawSprite(ctx, frame, palette, x, y, scale);
     if (seated) drawOccupiedChair(x, y, scale, true);
     if (station === "reading" && arrived) {
       ctx.fillStyle = "#fff1df"; ctx.fillRect(x + 8, y + 27, 22, 14);
@@ -842,18 +863,27 @@ function drawOfficeAgents(sessions: Run[], tick: number): void {
   }
 }
 
-function drawSessionFloor(tick: number): void {
+function drawSessionFloor(tick: number, now: number): void {
   const sessions = visibleAgents();
-  const active = new Set(sessions.map(stationFor));
-  drawOfficeFurniture(tick, active, sessions.filter((run) => stationFor(run) === "editing").length);
-  drawStudioPartitions();
+  if (studioDirty || !backgroundCtx || studioBackground.width !== canvas.width || studioBackground.height !== canvas.height) {
+    drawShell();
+    drawOfficeFurniture(0, new Set(), 0);
+    drawStudioPartitions();
+    studioBackground.width = canvas.width; studioBackground.height = canvas.height;
+    backgroundCtx?.drawImage(canvas, 0, 0);
+    studioDirty = false;
+  }
+  if (backgroundCtx) ctx.drawImage(studioBackground, 0, 0);
   if (sessions.length === 0) {
     agentPositions.clear();
+    doorOpenness.clear();
+    drawStudioDoors(now);
     plate("STUDIO SIAGA", 384, 377, "#f8be6a");
     textOnCanvas("Mulai sesi OpenCode untuk melihat agen bekerja.", 282, 411, COLORS.light, 12);
     return;
   }
-  drawOfficeAgents(sessions, tick);
+  drawStudioDoors(now);
+  drawOfficeAgents(sessions, tick, now);
   const primary = sessions[0];
   ctx.fillStyle = "#1b1d3b"; ctx.fillRect(42, 530, 610, 16);
   ctx.fillStyle = activityOf(primary).color; ctx.fillRect(42, 530, 5, 16);
@@ -862,13 +892,13 @@ function drawSessionFloor(tick: number): void {
   textOnCanvas(activeCount + " AGEN AKTIF", 792, 532, COLORS.light, 11);
 }
 
-function draw(): void {
-  const tick = reducedMotion ? 0 : Math.floor(Date.now() / 400);
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+function draw(now = performance.now()): void {
+  const tick = reducedMotion ? 0 : Math.floor(now / 240);
   ctx.imageSmoothingEnabled = false;
   ctx.textBaseline = "top";
+  if (mirrorOnly) { drawSessionFloor(tick, now); scheduleAnimation(); return; }
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
   drawShell();
-  if (mirrorOnly) { drawSessionFloor(tick); return; }
   if (office.rooms.length === 0) {
     plate("MENUNGGU DENAH KANTOR", 340, 266);
     return;
@@ -878,6 +908,23 @@ function draw(): void {
   const runById = new Map(runs.map((run) => [run.id, run]));
   office.rooms.forEach((room, index) => drawRoom(room, index, runById, tick));
   if (office.rooms.length <= 5) drawLounge();
+  scheduleAnimation();
+}
+
+function scheduleAnimation(): void {
+  if (reducedMotion || animationFrame !== undefined || document.visibilityState !== "visible") return;
+  const active = mirrorOnly ? visibleAgents().length > 0 : runs.some((run) => run.state === "walking" || run.state === "delivering");
+  if (!active) return;
+  animationFrame = window.requestAnimationFrame((now) => {
+    animationFrame = undefined;
+    const moving = [...agentPositions.values()].some((agent) => agent.route.length > 0)
+      || [...doorOpenness.values()].some((fraction) => fraction > 0 && fraction < 1);
+    if (now - lastPaint >= (moving ? 15 : 80)) {
+      lastPaint = now;
+      draw(now);
+    }
+    scheduleAnimation();
+  });
 }
 
 function connect(): void {
@@ -891,8 +938,11 @@ function connect(): void {
 draw();
 void snapshot();
 connect();
-if (!reducedMotion) {
-  window.setInterval(() => {
-    if (document.visibilityState === "visible" && (mirrorOnly ? visibleAgents().length > 0 : runs.some((run) => run.state === "walking" || run.state === "delivering"))) draw();
-  }, 400);
-}
+document.addEventListener("visibilitychange", () => {
+  if (animationFrame !== undefined) window.cancelAnimationFrame(animationFrame);
+  animationFrame = undefined;
+  const now = performance.now();
+  for (const agent of agentPositions.values()) agent.time = now;
+  lastDoorTime = now;
+  if (document.visibilityState === "visible") draw(now);
+});

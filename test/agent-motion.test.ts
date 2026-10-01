@@ -1,12 +1,30 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { advanceRoute, planRoute, stepToward } from "../src/dashboard/agent-motion.js";
+import { advanceRoute, advanceTimedRoute, planRoute, stepToward } from "../src/dashboard/agent-motion.js";
 import { STUDIO_OBSTACLES } from "../src/dashboard/studio-map.js";
 
 describe("stepToward", () => {
   it("moves at a bounded speed and reaches the chair without overshooting", () => {
     assert.deepEqual(stepToward({ x: 0, y: 0 }, { x: 30, y: 40 }, 10), { x: 6, y: 8 });
     assert.deepEqual(stepToward({ x: 24, y: 32 }, { x: 30, y: 40 }, 10), { x: 30, y: 40 });
+  });
+});
+
+describe("timed walking", () => {
+  it("moves the same distance at 30 and 60 frames per second", () => {
+    for (const frames of [30, 60]) {
+      let point = { x: 80, y: 160 }, route = [{ x: 400, y: 160 }];
+      for (let frame = 0; frame < frames; frame++) {
+        const next = advanceTimedRoute(point, route, 1000 / frames);
+        point = next.point; route = next.route;
+      }
+      assert.ok(Math.abs(point.x - 200) < .00001, "one second of walking should travel 120px regardless of frame rate");
+    }
+  });
+  it("does not jump after a hidden tab resumes or move twice on a same-time snapshot", () => {
+    const route = [{ x: 400, y: 160 }];
+    assert.deepEqual(advanceTimedRoute({ x: 80, y: 160 }, route, 0).point, { x: 80, y: 160 });
+    assert.ok(advanceTimedRoute({ x: 80, y: 160 }, route, 5000).point.x <= 90);
   });
 });
 
