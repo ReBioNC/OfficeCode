@@ -3,30 +3,30 @@ export interface Obstacle { x: number; y: number; w: number; h: number }
 
 const GRID = 4;
 const LEFT = 40, TOP = 112, RIGHT = 920, BOTTOM = 516;
-const COLS = (RIGHT - LEFT) / GRID + 1, ROWS = (BOTTOM - TOP) / GRID + 1;
-const gridCache = new WeakMap<readonly Obstacle[], Uint8Array>();
+const COLS = (RIGHT - LEFT) / GRID + 1;
+const gridCache = new WeakMap<readonly Obstacle[], Map<number, Uint8Array>>();
 
 function inside(point: Point, obstacle: Obstacle): boolean {
   return point.x > obstacle.x && point.x < obstacle.x + obstacle.w
     && point.y > obstacle.y && point.y < obstacle.y + obstacle.h;
 }
 
-function walkable(point: Point, obstacles: readonly Obstacle[]): boolean {
-  return point.x >= LEFT && point.x <= RIGHT && point.y >= TOP && point.y <= BOTTOM
+function walkable(point: Point, obstacles: readonly Obstacle[], bottom = BOTTOM): boolean {
+  return point.x >= LEFT && point.x <= RIGHT && point.y >= TOP && point.y <= bottom
     && !obstacles.some((obstacle) => inside(point, obstacle));
 }
 
-function segmentClear(from: Point, to: Point, obstacles: readonly Obstacle[]): boolean {
-  if (!walkable(from, obstacles) || !walkable(to, obstacles)) return false;
+function segmentClear(from: Point, to: Point, obstacles: readonly Obstacle[], bottom = BOTTOM): boolean {
+  if (!walkable(from, obstacles, bottom) || !walkable(to, obstacles, bottom)) return false;
   if (from.x !== to.x && from.y !== to.y) return false;
   return !obstacles.some((r) => from.y === to.y
     ? from.y > r.y && from.y < r.y + r.h && Math.max(from.x, to.x) > r.x && Math.min(from.x, to.x) < r.x + r.w
     : from.x > r.x && from.x < r.x + r.w && Math.max(from.y, to.y) > r.y && Math.min(from.y, to.y) < r.y + r.h);
 }
 
-function connector(from: Point, to: Point, obstacles: readonly Obstacle[]): Point[] | null {
+function connector(from: Point, to: Point, obstacles: readonly Obstacle[], bottom = BOTTOM): Point[] | null {
   for (const bend of [{ x: to.x, y: from.y }, { x: from.x, y: to.y }]) {
-    if (segmentClear(from, bend, obstacles) && segmentClear(bend, to, obstacles)) return [bend, to];
+    if (segmentClear(from, bend, obstacles, bottom) && segmentClear(bend, to, obstacles, bottom)) return [bend, to];
   }
   return null;
 }
@@ -35,18 +35,19 @@ function gridPoint(id: number): Point {
   return { x: LEFT + id % COLS * GRID, y: TOP + Math.floor(id / COLS) * GRID };
 }
 
-function gridAnchor(point: Point, obstacles: readonly Obstacle[]): { id: number; link: Point[] } | null {
+function gridAnchor(point: Point, obstacles: readonly Obstacle[], bottom: number): { id: number; link: Point[] } | null {
+  const rows = Math.floor((bottom - TOP) / GRID) + 1;
   const col = Math.round((point.x - LEFT) / GRID), row = Math.round((point.y - TOP) / GRID);
   const candidates: Array<{ id: number; distance: number }> = [];
   for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) {
     const x = col + dx, y = row + dy;
-    if (x < 0 || x >= COLS || y < 0 || y >= ROWS) continue;
+    if (x < 0 || x >= COLS || y < 0 || y >= rows) continue;
     const id = y * COLS + x, p = gridPoint(id);
     candidates.push({ id, distance: Math.abs(p.x - point.x) + Math.abs(p.y - point.y) });
   }
   candidates.sort((a, b) => a.distance - b.distance);
   for (const { id } of candidates) {
-    const link = connector(point, gridPoint(id), obstacles);
+    const link = connector(point, gridPoint(id), obstacles, bottom);
     if (link) return { id, link };
   }
   return null;
@@ -54,15 +55,17 @@ function gridAnchor(point: Point, obstacles: readonly Obstacle[]): { id: number;
 
 // Search a four-neighbor grid. Both endpoint connectors and each edge are
 // checked, so rounding a live position cannot cut across a wall or a desk.
-export function planRoute(from: Point, to: Point, obstacles: readonly Obstacle[] = []): Point[] | null {
-  if (!walkable(from, obstacles) || !walkable(to, obstacles)) return null;
-  const start = gridAnchor(from, obstacles), end = gridAnchor(to, obstacles);
+export function planRoute(from: Point, to: Point, obstacles: readonly Obstacle[] = [], bottom = BOTTOM): Point[] | null {
+  if (!walkable(from, obstacles, bottom) || !walkable(to, obstacles, bottom)) return null;
+  const start = gridAnchor(from, obstacles, bottom), end = gridAnchor(to, obstacles, bottom);
   if (!start || !end) return null;
-  let grid = gridCache.get(obstacles);
+  let cached = gridCache.get(obstacles);
+  if (!cached) { cached = new Map(); gridCache.set(obstacles, cached); }
+  let grid = cached.get(bottom);
   if (!grid) {
-    grid = new Uint8Array(COLS * ROWS);
-    for (let id = 0; id < grid.length; id++) grid[id] = walkable(gridPoint(id), obstacles) ? 1 : 0;
-    gridCache.set(obstacles, grid);
+    grid = new Uint8Array(COLS * (Math.floor((bottom - TOP) / GRID) + 1));
+    for (let id = 0; id < grid.length; id++) grid[id] = walkable(gridPoint(id), obstacles, bottom) ? 1 : 0;
+    cached.set(bottom, grid);
   }
   const parents = new Int32Array(grid.length).fill(-1);
   const queue = [start.id];
@@ -72,7 +75,7 @@ export function planRoute(from: Point, to: Point, obstacles: readonly Obstacle[]
     const neighbors = [col > 0 ? id - 1 : -1, col + 1 < COLS ? id + 1 : -1, id - COLS, id + COLS];
     for (const next of neighbors) {
       if (next < 0 || next >= grid.length || !grid[next] || parents[next] !== -1) continue;
-      if (!segmentClear(gridPoint(id), gridPoint(next), obstacles)) continue;
+      if (!segmentClear(gridPoint(id), gridPoint(next), obstacles, bottom)) continue;
       parents[next] = id;
       queue.push(next);
     }
@@ -82,7 +85,7 @@ export function planRoute(from: Point, to: Point, obstacles: readonly Obstacle[]
   for (let id = end.id; id !== start.id; id = parents[id]) path.push(gridPoint(id));
   path.push(gridPoint(start.id));
   path.reverse();
-  const endLink = connector(gridPoint(end.id), to, obstacles);
+  const endLink = connector(gridPoint(end.id), to, obstacles, bottom);
   if (!endLink) return null;
   const compact: Point[] = [from];
   for (const point of [...start.link, ...path, ...endLink]) {

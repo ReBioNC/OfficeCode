@@ -1,8 +1,9 @@
 import { deskPoint, roomRect, type Rect } from "./layout";
 import { displayWorkRole } from "./work-role";
 import { selectVisibleAgents } from "./live-agents";
+import { allocateStudioSeats, studioGeometry, type OfficeStation, type StudioSeat } from "./studio-seating";
 import { advanceTimedRoute, planRoute, type Direction, type Point } from "./agent-motion";
-import { OPS_DESK, STUDIO_DOORS, STUDIO_OBSTACLES, STUDIO_WALLS, WEB_DESK, WORK_DESKS } from "./studio-map";
+import { STUDIO_DOORS, STUDIO_WALLS, WORK_DESKS } from "./studio-map";
 import {
   BOARD_MAP, BOARD_PALETTE, CHAIR_MAP, CHAIR_PALETTE, CHAR_FRAMES,
   COMPUTER_MAP, COMPUTER_PALETTE, DESK_MAP, DESK_PALETTE, INK, PLANT_MAP, PLANT_PALETTE,
@@ -97,6 +98,8 @@ let animationFrame: number | undefined;
 let lastPaint = 0;
 let lastDoorTime = 0;
 const doorOpenness = new Map<string, number>();
+let studioSeats = new Map<string, StudioSeat>();
+let geometry = studioGeometry(studioSeats);
 
 function short(value: string, max: number): string {
   const clean = value.replace(/\s+/g, " ").trim();
@@ -129,9 +132,12 @@ function renderConnection(): void {
 }
 
 function renderPanels(): void {
-  studioDirty = true;
   const runById = new Map(runs.map((run) => [run.id, run]));
   const sessions = mirrorOnly ? visibleAgents() : [];
+  studioSeats = allocateStudioSeats(sessions.map((run) => ({ id: run.sessionId ?? run.id, station: stationFor(run) })), studioSeats);
+  const nextGeometry = studioGeometry(studioSeats, occupiedStudioHeight());
+  if (geometry.height !== nextGeometry.height) studioDirty = true;
+  geometry = nextGeometry;
   const focus = sessions[0];
   const roleFor = (run: Run): string => displayWorkRole(run, sessions.length === 1 && focus?.id === run.id);
   (document.getElementById("focusSection") as HTMLElement).hidden = !mirrorOnly;
@@ -163,7 +169,7 @@ function renderPanels(): void {
   (document.getElementById("queueEmpty") as HTMLElement).hidden = queue.length > 0;
   (document.getElementById("lastSync") as HTMLElement).textContent = `Synced ${new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}`;
   const roomSlots = office.rooms.length <= 5 ? office.rooms.length + 1 : office.rooms.length;
-  const floorHeight = mirrorOnly ? 560 : Math.max(560, 124 + Math.ceil(roomSlots / 3) * 218);
+  const floorHeight = mirrorOnly ? geometry.height : Math.max(560, 124 + Math.ceil(roomSlots / 3) * 218);
   if (canvas.height !== floorHeight) canvas.height = floorHeight;
 
   const activityNodes = [...runs].reverse().slice(0, 5).map((run) => {
@@ -531,10 +537,6 @@ function drawLounge(): void {
   }
 }
 
-type OfficeStation = "reading" | "editing" | "web-search" | "terminal" | "thinking" | "delegating" | "approval" | "lounge";
-
-const PLANNING_CHAIRS = [339, 445, 392, 498];
-
 function stationFor(run: Run): OfficeStation {
   if (run.state === "done") return "lounge";
   if (run.state === "blocked") return "approval";
@@ -622,7 +624,6 @@ function drawOfficeFurniture(tick: number, active: Set<OfficeStation>, editingCo
   drawRug(49, 300, 542, 212, "#6869a4", "#343660");
   drawRug(611, 300, 303, 212, "#dd917c", "#493c60");
   plate("IDEA POD", 59, 131, "#f2a1aa");
-  plate("PLANNING ATELIER", 302, 131, "#cbb5f1");
   plate("DIGITAL LIBRARY", 618, 131, "#86e5d4");
   plate("WORKSTATIONS", 59, 307, "#aca9e0");
   plate("OPS / COFFEE", 623, 307, "#f8bd91");
@@ -651,6 +652,7 @@ function drawOfficeFurniture(tick: number, active: Set<OfficeStation>, editingCo
   ctx.fillStyle = "#77daca"; ctx.fillRect(361, 198, 22, 3); ctx.fillRect(361, 204, 16, 3);
   ctx.fillStyle = "#f8be6a"; ctx.fillRect(480, 196, 23, 17);
   ctx.fillStyle = "#fbe8d0"; ctx.fillRect(486, 198, 11, 8);
+  plate("PLANNING ATELIER", 366, 205, "#cbb5f1");
   drawSprite(ctx, PLANT_MAP, PLANT_PALETTE, 561, 244, 2);
 
   // Books, a wall globe, and a search monitor occupy the research rug.
@@ -744,39 +746,17 @@ function drawStudioDoors(now: number): void {
   }
 }
 
-function drawWorkRoleBadge(role: string, x: number, y: number, scale: number, color: string): void {
-  const caption = short(role.toUpperCase(), 14);
-  ctx.font = 'bold 10px "Courier New", monospace';
+function drawWorkRoleBadge(role: string, x: number, y: number, scale: number, color: string, compact = false): void {
+  const caption = short(role.toUpperCase(), compact ? 6 : 14);
+  const fontSize = compact ? 8 : 10;
+  ctx.font = `bold ${fontSize}px "Courier New", monospace`;
   const width = Math.ceil(ctx.measureText(caption).width) + 16;
   const left = snap(Math.max(42, Math.min(x + 6 * scale - width / 2, 918 - width)));
-  const top = snap(Math.min(500, y + 14 * scale + 2));
+  const top = snap(Math.min(canvas.height - 34, y + 14 * scale + 2));
   ctx.fillStyle = "#13152d"; ctx.fillRect(left + 2, top + 2, width, 17);
   ctx.fillStyle = "#2b2b4d"; ctx.fillRect(left, top, width, 17);
   ctx.fillStyle = color; ctx.fillRect(left, top, 4, 17);
-  textOnCanvas(caption, left + 9, top + 3, COLORS.light, 10);
-}
-
-function seatedStation(station: OfficeStation): boolean {
-  return station === "editing" || station === "web-search" || station === "terminal"
-    || station === "thinking" || station === "delegating";
-}
-
-function takeComputerDesk(station: OfficeStation, used: Set<string>): readonly [number, number] {
-  const desks = station === "web-search" ? [WEB_DESK, ...WORK_DESKS, OPS_DESK]
-    : station === "terminal" ? [OPS_DESK, ...WORK_DESKS, WEB_DESK]
-      : [...WORK_DESKS, WEB_DESK, OPS_DESK];
-  const desk = desks.find(([x, y]) => !used.has(`${x},${y}`)) ?? desks[0];
-  used.add(`${desk[0]},${desk[1]}`);
-  return desk;
-}
-
-function stationTarget(station: OfficeStation, slot: number): Point {
-  if (station === "thinking" || station === "delegating") {
-    return { x: PLANNING_CHAIRS[slot % PLANNING_CHAIRS.length] - 1, y: 230 };
-  }
-  if (station === "reading") return { x: 680 - slot * 48, y: 220 };
-  if (station === "approval") return { x: 615 + slot * 46, y: 385 };
-  return { x: 660 + slot * 46, y: 387 };
+  textOnCanvas(caption, left + 9, top + 3, COLORS.light, fontSize);
 }
 
 function drawOccupiedChair(x: number, y: number, scale: number, front: boolean): void {
@@ -796,8 +776,6 @@ function drawOccupiedChair(x: number, y: number, scale: number, front: boolean):
 }
 
 function drawOfficeAgents(sessions: Run[], tick: number, now: number): void {
-  const stationOccupancy = new Map<OfficeStation, number>();
-  const usedComputerDesks = new Set<string>();
   const visibleIds = new Set(sessions.map((run) => run.sessionId ?? run.id));
   for (const id of agentPositions.keys()) if (!visibleIds.has(id)) agentPositions.delete(id);
   const planningCount = sessions.filter((run) => ["thinking", "delegating"].includes(stationFor(run))).length;
@@ -805,31 +783,27 @@ function drawOfficeAgents(sessions: Run[], tick: number, now: number): void {
     ctx.fillStyle = tick % 2 === 0 ? "#f8be6a" : "#cbb5f1";
     for (let dot = 0; dot < 3; dot++) ctx.fillRect(415 + dot * 12, 210 + (dot === tick % 3 ? -4 : 0), 5, 5);
   }
-  for (const run of sessions) {
+  for (const run of [...sessions].sort((a, b) => (agentPositions.get(a.sessionId ?? a.id)?.point.y ?? studioSeats.get(a.sessionId ?? a.id)?.point.y ?? 0)
+    - (agentPositions.get(b.sessionId ?? b.id)?.point.y ?? studioSeats.get(b.sessionId ?? b.id)?.point.y ?? 0))) {
     const station = stationFor(run);
-    const occupancyKey = station === "thinking" || station === "delegating" ? "thinking" : station;
-    const slot = stationOccupancy.get(occupancyKey) ?? 0;
-    stationOccupancy.set(occupancyKey, slot + 1);
-    const scale = station === "thinking" || station === "delegating" ? 3 : sessions.length <= 2 ? 4 : 3;
-    const computer = station === "editing" || station === "web-search" || station === "terminal"
-      ? takeComputerDesk(station, usedComputerDesks) : undefined;
-    const target = computer
-      ? { x: computer[0] + (scale === 4 ? 5 : 9), y: computer[1] + 35 }
-      : stationTarget(station, slot);
+    const scale = 3;
     const id = run.sessionId ?? run.id;
+    const seat = studioSeats.get(id);
+    if (!seat) continue;
+    const computer = seat.computer;
     const prior = agentPositions.get(id);
-    const feet = { x: target.x + 6 * scale, y: target.y + 13 * scale };
+    const feet = seat.point;
     let agent = prior ?? { point: feet, target: feet, route: [], time: now, direction: "south" as Direction };
     if (reducedMotion) agent = { ...agent, point: feet, target: feet, route: [] };
     else if (agent.target.x !== feet.x || agent.target.y !== feet.y) {
-      agent = { ...agent, target: feet, route: planRoute(agent.point, feet, STUDIO_OBSTACLES) ?? [] };
+      agent = { ...agent, target: feet, route: planRoute(agent.point, feet, geometry.obstacles, canvas.height === 560 ? 516 : canvas.height - 24) ?? [] };
     }
     if (agent.route.length) agent = { ...agent, ...advanceTimedRoute(agent.point, agent.route, now - agent.time) };
     agent.time = now;
     agentPositions.set(id, agent);
     const x = snap(agent.point.x - 6 * scale), y = snap(agent.point.y - 13 * scale);
     const arrived = Math.hypot(agent.point.x - feet.x, agent.point.y - feet.y) < 2;
-    const seated = arrived && seatedStation(station);
+    const seated = arrived && seat.seated;
     const activity = activityOf(run);
     const workRole = displayWorkRole(run, sessions.length === 1);
     const palette = agentPalette(workRole, id);
@@ -858,17 +832,39 @@ function drawOfficeAgents(sessions: Run[], tick: number, now: number): void {
       ctx.fillStyle = "#fff7dd";
       for (let dot = 0; dot < 3; dot++) ctx.fillRect(x + 36 + dot * 7, y - 10 - (tick + dot) % 2 * 3, 4, 4);
     }
-    drawAgentBubble(run, x, y, activity.color, slot % 3);
-    drawWorkRoleBadge(workRole, x, y, scale, palette.C);
+    if (sessions.length <= 4) drawAgentBubble(run, x, y, activity.color, 0);
+    else {
+      const mark = ({ thinking: "…", delegating: "↔", reading: "R", editing: "E", "web-search": "W", terminal: ">_", approval: "!", lounge: "·" })[station];
+      ctx.fillStyle = "#242747"; ctx.fillRect(x + 30, y + 5, 21, 16);
+      textOnCanvas(mark, x + 33, y + 7, activity.color, 10);
+    }
+    drawWorkRoleBadge(workRole, x, y, scale, palette.C, sessions.length > 4);
   }
+}
+
+function occupiedStudioHeight(): number {
+  const points = [...agentPositions.entries()].filter(([id]) => studioSeats.has(id)).map(([, agent]) => agent.point.y);
+  const bottom = Math.max(516, ...points);
+  return bottom <= 516 ? 560 : 560 + Math.ceil((bottom - 560) / 130) * 130;
 }
 
 function drawSessionFloor(tick: number, now: number): void {
   const sessions = visibleAgents();
+  const desiredHeight = Math.max(studioGeometry(studioSeats).height, occupiedStudioHeight());
+  if (desiredHeight !== geometry.height) {
+    geometry = studioGeometry(studioSeats, desiredHeight);
+    canvas.height = desiredHeight;
+    studioDirty = true;
+  }
   if (studioDirty || !backgroundCtx || studioBackground.width !== canvas.width || studioBackground.height !== canvas.height) {
     drawShell();
     drawOfficeFurniture(0, new Set(), 0);
     drawStudioPartitions();
+    if (geometry.extraDesks.length) {
+      drawRug(34, 555, 892, canvas.height - 570, "#6869a4", "#343660");
+      plate("TEAM WORKSPACE", 48, 558, "#cbb5f1");
+      for (const [x, y] of geometry.extraDesks) officeDesk(x, y);
+    }
     studioBackground.width = canvas.width; studioBackground.height = canvas.height;
     backgroundCtx?.drawImage(canvas, 0, 0);
     studioDirty = false;
