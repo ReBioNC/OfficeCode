@@ -8,8 +8,6 @@ OfficeCode shows [OpenCode](https://opencode.ai/) session activity as a pixel-ar
 
 Three real OpenCode sessions running Frontend, Backend, and QA checks in one studio. Captured in an isolated test workspace.
 
-To replace the screenshot or add another image, see [Updating README images](docs/README-PREVIEW.md).
-
 ## Requirements
 
 - The OpenCode CLI must be installed and the `opencode` command must be available in your terminal. This integration has been tested with OpenCode 1.18.33.
