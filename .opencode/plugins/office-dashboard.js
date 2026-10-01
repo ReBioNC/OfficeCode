@@ -117,13 +117,13 @@ function toolActivity(name, args = {}) {
   const query = data.query ?? data.pattern ?? data.url;
   const hint = target || (query ? String(query) : "");
   const clean = hint.replace(/[\r\n\t]+/g, " ").slice(0, 54);
-  if (/web|fetch|search|browse/.test(tool) && !/grep|codesearch/.test(tool)) return { activity: "web-search", detail: clean ? `Mencari: ${clean}` : "Mencari di web" };
-  if (/edit|write|patch|create|multiedit/.test(tool)) return { activity: "editing", detail: clean ? `Mengedit ${clean}` : "Mengedit kode" };
-  if (/read|cat|view/.test(tool)) return { activity: "reading", detail: clean ? `Membaca ${clean}` : "Membaca file" };
-  if (/grep|glob|find|codesearch|list/.test(tool)) return { activity: "code-search", detail: clean ? `Menelusuri: ${clean}` : "Menelusuri kode" };
-  if (/bash|shell|terminal|command|exec/.test(tool)) return { activity: "terminal", detail: "Menjalankan perintah" };
-  if (/task|agent|delegate/.test(tool)) return { activity: "delegating", detail: "Berkoordinasi dengan agen" };
-  return { activity: "working", detail: `Memakai ${tool.slice(0, 32)}` };
+  if (/web|fetch|search|browse/.test(tool) && !/grep|codesearch/.test(tool)) return { activity: "web-search", detail: clean ? `Searching: ${clean}` : "Searching the web" };
+  if (/edit|write|patch|create|multiedit/.test(tool)) return { activity: "editing", detail: clean ? `Editing ${clean}` : "Editing code" };
+  if (/read|cat|view/.test(tool)) return { activity: "reading", detail: clean ? `Reading ${clean}` : "Reading files" };
+  if (/grep|glob|find|codesearch|list/.test(tool)) return { activity: "code-search", detail: clean ? `Searching code: ${clean}` : "Searching code" };
+  if (/bash|shell|terminal|command|exec/.test(tool)) return { activity: "terminal", detail: "Running commands" };
+  if (/task|agent|delegate/.test(tool)) return { activity: "delegating", detail: "Coordinating with agents" };
+  return { activity: "working", detail: `Using ${tool.slice(0, 32)}` };
 }
 
 async function toast(client, message) {
@@ -177,7 +177,7 @@ export const OfficeDashboardPlugin = async ({ client, directory }) => {
   // The headless server may never emit server.connected. Start when OpenCode loads the plugin.
   void ensure().catch(() => {});
 
-  return {
+  const hooks = {
     dispose: async () => {
       disposed = true;
       if (heartbeat) clearInterval(heartbeat);
@@ -191,7 +191,7 @@ export const OfficeDashboardPlugin = async ({ client, directory }) => {
       if (!event || typeof event.type !== "string") return;
       if (event.type === "server.connected") {
         const current = await ensure();
-        await toast(client, current ? `🏢 Office dashboard → ${current} · /dashboard` : "🏢 Office dashboard belum tersedia · cek instalasi Node.js/OfficeCode");
+        await toast(client, current ? `🏢 Office dashboard → ${current} · /dashboard` : "🏢 Office dashboard unavailable · check your Node.js/OfficeCode installation");
       }
       if (event.type === "session.created") {
         const sid = sessionIdOf(event);
@@ -207,16 +207,16 @@ export const OfficeDashboardPlugin = async ({ client, directory }) => {
       if (event.type === "message.updated" && event.properties?.info?.role === "user") {
         const info = event.properties.info;
         const sid = sessionIdOf(info);
-        if (sid && typeof info.agent === "string") {
-          await beginSession(sid);
+        // Metadata can arrive after idle. Only a prompt hook or busy status starts a new turn.
+        if (sid && activeSessions.has(sid) && typeof info.agent === "string") {
           await post(await ensure(), "/api/mirror/event", { sessionId: sid, state: "thinking", activity: "thinking",
-            role: info.agent, detail: "Menyusun langkah berikutnya" });
+            role: info.agent, detail: "Planning the next steps" });
         }
       }
       if (event.type === "session.status" && event.properties?.status?.type === "busy") {
         const sid = sessionIdOf(event);
         await beginSession(sid);
-        if (sid) await post(await ensure(), "/api/mirror/event", { sessionId: sid, state: "thinking", activity: "thinking", detail: "Menyusun langkah berikutnya" });
+        if (sid) await post(await ensure(), "/api/mirror/event", { sessionId: sid, state: "thinking", activity: "thinking", detail: "Planning the next steps" });
       }
       if (event.type === "session.idle" || event.type === "session.deleted" || event.type === "session.error"
         || (event.type === "session.status" && event.properties?.status?.type === "idle")) {
@@ -231,14 +231,14 @@ export const OfficeDashboardPlugin = async ({ client, directory }) => {
         const sid = sessionIdOf(event);
         if (sid) {
           await beginSession(sid);
-          await post(await ensure(), "/api/mirror/event", { sessionId: sid, state: "waiting-approval", activity: "approval", detail: "Menunggu izin", message: "menunggu approval" });
+          await post(await ensure(), "/api/mirror/event", { sessionId: sid, state: "waiting-approval", activity: "approval", detail: "Waiting for permission", message: "waiting for approval" });
         }
       }
       if (event.type === "permission.replied") {
         const sid = sessionIdOf(event);
         if (sid) {
           await beginSession(sid);
-          await post(await ensure(), "/api/mirror/event", { sessionId: sid, state: "thinking", activity: "thinking", detail: "Menyusun langkah berikutnya" });
+          await post(await ensure(), "/api/mirror/event", { sessionId: sid, state: "thinking", activity: "thinking", detail: "Planning the next steps" });
         }
       }
     },
@@ -247,7 +247,7 @@ export const OfficeDashboardPlugin = async ({ client, directory }) => {
       if (!sid) return;
       await beginSession(sid);
       await post(await ensure(), "/api/mirror/event", { sessionId: sid, state: "thinking", activity: "thinking",
-        role: typeof input.agent === "string" ? input.agent : undefined, detail: "Menyusun langkah berikutnya" });
+        role: typeof input.agent === "string" ? input.agent : undefined, detail: "Planning the next steps" });
     },
     "tool.execute.before": async (input, output) => {
       const sid = sessionIdOf(input);
@@ -260,14 +260,33 @@ export const OfficeDashboardPlugin = async ({ client, directory }) => {
     },
     "tool.execute.after": async (input) => {
       const sid = sessionIdOf(input);
-      if (sid) await post(await ensure(), "/api/mirror/event", { sessionId: sid, state: "thinking", activity: "thinking", detail: "Memeriksa hasil tool" });
+      if (sid) await post(await ensure(), "/api/mirror/event", { sessionId: sid, state: "thinking", activity: "thinking", detail: "Reviewing tool results" });
     },
     "permission.ask": async (input) => {
       const sid = sessionIdOf(input);
       if (sid) {
         await beginSession(sid);
-        await post(await ensure(), "/api/mirror/event", { sessionId: sid, state: "waiting-approval", activity: "approval", detail: "Menunggu izin", message: "menunggu approval" });
+        await post(await ensure(), "/api/mirror/event", { sessionId: sid, state: "waiting-approval", activity: "approval", detail: "Waiting for permission", message: "waiting for approval" });
       }
     },
   };
+
+  // OpenCode emits hooks without awaiting them. Preserve each session's event order
+  // so an in-flight title update cannot recreate its run after idle has finished it.
+  const sessionTasks = new Map();
+  for (const name of ["event", "chat.message", "tool.execute.before", "tool.execute.after", "permission.ask"]) {
+    const handle = hooks[name];
+    hooks[name] = (...args) => {
+      const payload = name === "event" ? args[0]?.event : args[0];
+      const sid = payload?.properties?.info?.sessionID ?? sessionIdOf(payload);
+      if (!sid) return handle(...args);
+      const previous = sessionTasks.get(sid) ?? Promise.resolve();
+      const task = previous.catch(() => {}).then(() => handle(...args));
+      sessionTasks.set(sid, task);
+      return task.finally(() => {
+        if (sessionTasks.get(sid) === task) sessionTasks.delete(sid);
+      });
+    };
+  }
+  return hooks;
 };

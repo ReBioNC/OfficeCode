@@ -19,16 +19,27 @@ const { OfficeDashboardPlugin } = await import(pluginUrl);
 const toasts = [];
 const client = { tui: { showToast: async ({ body }) => { toasts.push(body.message); return true; } } };
 const hooks = await OfficeDashboardPlugin({ client, directory: ws });
+const realFetch = globalThis.fetch;
+globalThis.fetch = async (url, options) => {
+  // Hold an in-flight title update while idle arrives, as OpenCode's unawaited hooks can do.
+  if (String(url).endsWith("/api/mirror/session") && options?.body
+    && JSON.parse(options.body).prompt === "Late concurrent title") {
+    await new Promise((resolve) => setTimeout(resolve, 150));
+  }
+  return realFetch(url, options);
+};
 let dashboardUrl = "http://127.0.0.1:" + port;
 let disposeAfter = false;
 const api = async (p, body) => (await fetch(dashboardUrl + p, body
   ? { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }
   : {})).json();
-for (const a of JSON.parse(actionsJson)) {
-  if (a.call === "dispose") { disposeAfter = true; continue; }
+async function invoke(a) {
+  if (a.call === "dispose") { disposeAfter = true; return; }
+  if (a.call === "parallel") { await Promise.all(a.actions.map(invoke)); return; }
   if (a.call === "event") await hooks.event({ event: a.event });
   else await hooks[a.call](a.input, a.output);
 }
+for (const a of JSON.parse(actionsJson)) await invoke(a);
 dashboardUrl = toasts.map((t) => t.split(" → ")[1]?.split(" ")[0]).find(Boolean) || dashboardUrl;
 const runs = (await api("/api/runs")).runs.map((r) => ({ id: r.id, state: r.state, deskId: r.deskId, role: r.role, activity: r.activity, detail: r.detail, sessionId: r.sessionId, prompt: r.prompt }));
 const occupants = (await api("/api/office")).occupants;
@@ -140,7 +151,7 @@ describe("opencode plugin", () => {
     const run = out.runs.find((entry) => entry.sessionId === sid);
     assert.equal(run?.role, "build");
     assert.equal(run?.activity, "reading");
-    assert.match(run?.detail ?? "", /search\.ts/);
+    assert.equal(run?.detail, "Reading search.ts");
     const edited = await drive([{ call: "tool.execute.before", input: { sessionID: sid, tool: "edit" }, output: { args: { filePath: "src/search.ts" } } }]);
     assert.equal(edited.runs.find((entry) => entry.sessionId === sid)?.activity, "editing");
     const searched = await drive([{ call: "tool.execute.before", input: { sessionID: sid, tool: "websearch" }, output: { args: { query: "search docs" } } }]);
@@ -175,6 +186,32 @@ describe("opencode plugin", () => {
     ]);
     assert.equal(out.runs.find((entry) => entry.sessionId === sid)?.state, "done");
   });
+  it("ignores late user-message metadata after idle but shows the next genuine prompt", async () => {
+    const sid = "plug-late-user-metadata";
+    const out = await drive([
+      { call: "chat.message", input: { sessionID: sid, agent: "frontend-dev" } },
+      { call: "event", event: { type: "session.idle", properties: { sessionID: sid } } },
+      { call: "event", event: { type: "message.updated", properties: { info: { sessionID: sid, role: "user", agent: "frontend-dev" } } } },
+    ]);
+    assert.equal(out.runs.filter((run) => run.sessionId === sid).length, 1);
+    assert.equal(out.runs.find((run) => run.sessionId === sid)?.state, "done");
+    const next = await drive([{ call: "chat.message", input: { sessionID: sid, agent: "backend-dev" } }]);
+    assert.ok(next.runs.some((run) => run.sessionId === sid && run.state === "thinking" && run.role === "backend-dev"));
+  });
+  it("keeps a completed session closed when its title request overlaps idle", async () => {
+    const sid = "plug-concurrent-title";
+    const out = await drive([
+      { call: "chat.message", input: { sessionID: sid, agent: "build" } },
+      { call: "parallel", actions: [
+        { call: "event", event: { type: "session.updated", properties: { info: { id: sid, title: "Late concurrent title" } } } },
+        { call: "event", event: { type: "session.idle", properties: { sessionID: sid } } },
+      ] },
+    ]);
+    const sessionRuns = out.runs.filter((run) => run.sessionId === sid);
+    assert.equal(sessionRuns.length, 1);
+    assert.equal(sessionRuns[0].state, "done");
+    assert.ok(!Object.values(out.occupants).includes(sessionRuns[0].id));
+  });
   it("never throws when the sidecar is down", async () => {
     const out = await drive(
       [
@@ -197,7 +234,9 @@ describe("opencode plugin", () => {
       assert.notEqual(out.url, `http://127.0.0.1:${TEST_PORT}`);
       assert.equal((await fetch(out.url)).status, 200);
       assert.equal((await fetch(`${out.url}/app.js`)).status, 200);
-      assert.equal((await fetch(`${out.url}/api/runs`, { method: "POST" })).status, 403);
+      const dispatch = await fetch(`${out.url}/api/runs`, { method: "POST" });
+      assert.equal(dispatch.status, 403);
+      assert.equal((await dispatch.json()).error, "The global dashboard mirrors OpenCode sessions; start tasks in OpenCode.");
       assert.equal(fs.existsSync(path.join(other, ".officecode")), false);
     } finally {
       if (pid) process.kill(pid);

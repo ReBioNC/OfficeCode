@@ -10,9 +10,9 @@ const stateRoot = path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), 
 async function main() {
   let connection;
   try { connection = JSON.parse(fs.readFileSync(path.join(stateRoot, "projects", key, "connection.json"), "utf8")); }
-  catch { console.log("Dashboard belum aktif untuk proyek ini. Buka OpenCode di folder proyek ini."); return; }
+  catch { console.log("The dashboard is not active for this project. Open OpenCode in this project folder."); return; }
   if (connection.workspace !== workspace || !/^http:\/\/127\.0\.0\.1:\d+$/.test(connection.url)) {
-    console.log("Koneksi dashboard tidak valid untuk proyek ini.");
+    console.log("The dashboard connection is invalid for this project.");
     return;
   }
   try {
@@ -23,11 +23,11 @@ async function main() {
     const office = await officeRes.json();
     const runs = await runsRes.json();
     console.log(`🏢 Office dashboard → ${connection.url}`);
-    console.log(`Proyek: ${workspace}`);
-    console.log(`Aktif: ${Object.keys(office.occupants || {}).length} · Riwayat: ${(runs.runs || []).length}`);
+    console.log(`Project: ${workspace}`);
+    console.log(`Active: ${Object.keys(office.occupants || {}).length} · History: ${(runs.runs || []).length}`);
   } catch {
-    console.log(`Dashboard proyek ini sedang tidak aktif. URL terakhir: ${connection.url}`);
-    console.log("Buka kembali OpenCode untuk menyalakannya otomatis.");
+    console.log(`The dashboard is inactive for this project. Last URL: ${connection.url}`);
+    console.log("Reopen OpenCode to start it automatically.");
   }
 }
 
