@@ -8,8 +8,6 @@ OfficeCode shows [OpenCode](https://opencode.ai/) session activity as a pixel-ar
 
 Three real OpenCode sessions running Frontend, Backend, and QA checks in one studio. Captured in an isolated test workspace.
 
-To replace the screenshot or add another image, see [Updating README images](docs/README-PREVIEW.md).
-
 ## Requirements
 
 - The OpenCode CLI must be installed and the `opencode` command must be available in your terminal. This integration has been tested with OpenCode 1.18.33.
@@ -19,6 +17,85 @@ To replace the screenshot or add another image, see [Updating README images](doc
 The installation steps below have been tested on Windows. The scripts use cross-platform Node.js paths, but macOS and Linux have not been tested directly.
 
 ## Install as a global OpenCode plugin
+
+### Install with an OpenCode agent
+
+Start OpenCode in its global configuration folder, then paste the prompt below into the **Build** agent. This gives the agent a clear working directory for installing the plugin and `/dashboard` command. The OfficeCode checkout is a separate, permanent folder that contains the dashboard build.
+
+**Windows PowerShell:**
+
+```powershell
+$opencodeConfigDirectory = if ($env:XDG_CONFIG_HOME) {
+  Join-Path $env:XDG_CONFIG_HOME "opencode"
+} else {
+  Join-Path $env:USERPROFILE ".config\opencode"
+}
+New-Item -ItemType Directory -Path $opencodeConfigDirectory -Force | Out-Null
+Set-Location -LiteralPath $opencodeConfigDirectory
+opencode
+```
+
+**macOS / Linux:**
+
+```bash
+opencode_config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/opencode"
+mkdir -p "$opencode_config_dir"
+cd "$opencode_config_dir"
+opencode
+```
+
+If OpenCode asks for access to the checkout or configuration folder, grant the directory access needed for this installation. The following prompt authorizes installing OfficeCode globally while preserving your existing OpenCode settings and other plugins.
+
+**Copy and paste this prompt:**
+
+```text
+Install https://github.com/ReBioNC/OfficeCode.git as a GLOBAL OpenCode
+dashboard plugin so I can use it in any project.
+
+1. Check the operating system and that git, node, npm, and opencode are
+   available. Use my existing OpenCode model and provider configuration.
+
+2. Use a permanent OfficeCode checkout at <my home directory>/OfficeCode.
+   If it does not exist, clone the repository there. If it already exists,
+   check its remote and working tree, then reuse it when it is the correct
+   repository. Preserve local changes. If the path belongs to something
+   else, ask me for another checkout path. Read the README and inspect
+   scripts/install-global.cjs before running the installer.
+
+3. Resolve the GLOBAL OpenCode configuration directory:
+   - If XDG_CONFIG_HOME is set: <XDG_CONFIG_HOME>/opencode
+   - Otherwise: <my home directory>/.config/opencode, including Windows
+   The current directory may already be this configuration directory.
+
+4. From the OfficeCode checkout, run npm ci and npm run install:opencode.
+   The installer builds the dashboard and installs exactly these files:
+   - <config directory>/plugins/office-dashboard.js
+   - <config directory>/plugins/office-dashboard.json
+   - <config directory>/commands/dashboard.md
+   Preserve existing settings, provider credentials, models, and other
+   plugins. Use the installer's backup behavior for existing OfficeCode
+   files. Keep the checkout at its permanent path. The JSON file beside
+   the plugin must point to that checkout's absolute path.
+
+5. Verify that the installed plugin matches the checkout's source,
+   the JSON root points to the checkout, the /dashboard command exists,
+   and dist/src/sidecar/index.js plus dashboard/public/app.js were built.
+   Report the actual checkout and installed file paths in English.
+
+6. Tell me to close and reopen OpenCode, start it in a project, run
+   /dashboard, and open its URL. The dashboard starts when OpenCode loads
+   the plugin; /dashboard only shows the URL and status. All models stay
+   managed by OpenCode. Do not start npm run dev or set a mock driver as
+   part of this global installation.
+
+If a required program is missing or installation fails, report the exact
+problem and the next step. Do not claim the installation works until the
+file and build checks have passed.
+```
+
+Newly installed plugins load after restarting OpenCode. The agent can verify the installation files in the current session; check the running dashboard after reopening OpenCode in your project.
+
+### Install from a terminal
 
 Run these commands in PowerShell or another terminal:
 
