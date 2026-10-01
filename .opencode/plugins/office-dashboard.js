@@ -177,7 +177,7 @@ export const OfficeDashboardPlugin = async ({ client, directory }) => {
   // The headless server may never emit server.connected. Start when OpenCode loads the plugin.
   void ensure().catch(() => {});
 
-  return {
+  const hooks = {
     dispose: async () => {
       disposed = true;
       if (heartbeat) clearInterval(heartbeat);
@@ -270,4 +270,23 @@ export const OfficeDashboardPlugin = async ({ client, directory }) => {
       }
     },
   };
+
+  // OpenCode emits hooks without awaiting them. Preserve each session's event order
+  // so an in-flight title update cannot recreate its run after idle has finished it.
+  const sessionTasks = new Map();
+  for (const name of ["event", "chat.message", "tool.execute.before", "tool.execute.after", "permission.ask"]) {
+    const handle = hooks[name];
+    hooks[name] = (...args) => {
+      const payload = name === "event" ? args[0]?.event : args[0];
+      const sid = payload?.properties?.info?.sessionID ?? sessionIdOf(payload);
+      if (!sid) return handle(...args);
+      const previous = sessionTasks.get(sid) ?? Promise.resolve();
+      const task = previous.catch(() => {}).then(() => handle(...args));
+      sessionTasks.set(sid, task);
+      return task.finally(() => {
+        if (sessionTasks.get(sid) === task) sessionTasks.delete(sid);
+      });
+    };
+  }
+  return hooks;
 };
