@@ -1,6 +1,6 @@
 # Installing OfficeCode
 
-For global installation, cross-project use, updates, and uninstall instructions, see the [README](../README.md#install-as-a-global-opencode-plugin).
+For installation and updates, see the [README](../README.md#install). For troubleshooting, uninstall, API, and development details, see the [full guide](GUIDE.md).
 
 To let an OpenCode agent install the plugin, open OpenCode in its global configuration directory and paste the [installation prompt](../README.md#install-with-an-opencode-agent) into the Build agent. The prompt installs the global plugin and command from a permanent OfficeCode checkout while preserving existing settings and other plugins.
 
