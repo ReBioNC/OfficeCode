@@ -1,10 +1,10 @@
 <!doctype html>
-<html lang="id">
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="theme-color" content="#0b0e20" />
-  <title>OfficeCode — Studio malam</title>
+  <title>OfficeCode — Night Studio</title>
   <style>
     :root { color-scheme: dark; --ink:#fff1df; --night:#0b0e20; --paper:#1c1e3b; --light:#292b4e; --line:#434361; --muted:#adaac6; --sage:#67dccb; --red:#ff827d; --accent:#f8be6a; font-family:"Trebuchet MS",Arial,sans-serif; }
     * { box-sizing:border-box; }
@@ -98,23 +98,23 @@
 </head>
 <body>
   <div class="app">
-    <main class="floor-panel" aria-label="Denah kantor live">
-      <header class="floor-header"><div><p class="eyebrow">Studio malam / siaran langsung</p><h1>Office<span>Code</span> Studio</h1></div><span id="floorMeta" class="floor-meta">Memuat studio…</span></header>
-      <div class="floor-stage"><canvas id="floor" width="960" height="560" role="img" aria-label="Studio kantor dengan agen, meja kerja, dan aktivitas OpenCode langsung"></canvas></div>
-      <div class="floor-footer"><span>Satu studio · agen bergerak mengikuti aktivitas OpenCode</span><strong id="lastSync">Menunggu sinkronisasi</strong></div>
+    <main class="floor-panel" aria-label="Live office floor">
+      <header class="floor-header"><div><p class="eyebrow">Night studio / live feed</p><h1>Office<span>Code</span> Studio</h1></div><span id="floorMeta" class="floor-meta">Loading studio…</span></header>
+      <div class="floor-stage"><canvas id="floor" width="960" height="560" role="img" aria-label="Office studio with agents, workstations, and live OpenCode activity"></canvas></div>
+      <div class="floor-footer"><span>One studio · agents follow OpenCode activity</span><strong id="lastSync">Waiting for sync</strong></div>
     </main>
-    <aside class="command-center" aria-label="Pusat informasi kantor">
-      <header class="command-header"><div class="command-title"><div><h2>Pusat aktivitas</h2><p class="command-subtitle">Lihat alur kerja agen di studio.</p></div><span class="view-tag">LIVE</span></div><span id="connection" class="connection" data-state="offline" role="status">Menghubungkan…</span></header>
-      <div id="activityTracker" class="activity-tracker" aria-label="Aktivitas agen saat ini" hidden><span class="activity-chip" data-activity="thinking">◌ PIKIR</span><span class="activity-chip" data-activity="reading">▤ BACA</span><span class="activity-chip" data-activity="editing">✎ EDIT</span><span class="activity-chip" data-activity="web-search">◎ WEB</span><span class="activity-chip" data-activity="terminal">&gt;_ TERM</span><span class="activity-chip" data-activity="approval">! IZIN</span></div>
-      <div class="metrics" aria-label="Ringkasan kantor"><div class="metric"><span class="metric-label">Aktif</span><span id="statActive" class="metric-value">—</span><span class="metric-unit">agen bekerja</span></div><div class="metric"><span class="metric-label">Antre</span><span id="statQueue" class="metric-value">—</span><span class="metric-unit">tugas menunggu</span></div><div class="metric"><span class="metric-label">Biaya</span><span id="statSpent" class="metric-value money">—</span><span class="metric-unit">USD hari ini · est.</span></div></div>
+    <aside class="command-center" aria-label="Office information center">
+      <header class="command-header"><div class="command-title"><div><h2>Activity center</h2><p class="command-subtitle">Follow agent workflows in the studio.</p></div><span class="view-tag">LIVE</span></div><span id="connection" class="connection" data-state="offline" role="status">Connecting…</span></header>
+      <div id="activityTracker" class="activity-tracker" aria-label="Current agent activity" hidden><span class="activity-chip" data-activity="thinking">◌ THINK</span><span class="activity-chip" data-activity="reading">▤ READ</span><span class="activity-chip" data-activity="editing">✎ EDIT</span><span class="activity-chip" data-activity="web-search">◎ WEB</span><span class="activity-chip" data-activity="terminal">&gt;_ TERM</span><span class="activity-chip" data-activity="approval">! PERMIT</span></div>
+      <div class="metrics" aria-label="Office overview"><div class="metric"><span class="metric-label">Active</span><span id="statActive" class="metric-value">—</span><span class="metric-unit">agents working</span></div><div class="metric"><span class="metric-label">Queued</span><span id="statQueue" class="metric-value">—</span><span class="metric-unit">tasks waiting</span></div><div class="metric"><span class="metric-label">Spend</span><span id="statSpent" class="metric-value money">—</span><span class="metric-unit">USD today · est.</span></div></div>
       <div class="center-scroll">
-        <section id="focusSection" class="panel-section focus-card" aria-labelledby="focusHeading" hidden><div class="section-heading"><h3 id="focusHeading">Sedang dikerjakan</h3><span id="focusStation">Siaga</span></div><div class="focus-body"><span id="focusRole" class="focus-role">Agen OpenCode</span><span id="focusTask" class="focus-task">Menunggu sesi kerja</span><span id="focusActivity" class="focus-activity">Belum ada aktivitas</span><span id="focusDetail" class="focus-detail">Mulai mengerjakan fitur di OpenCode.</span></div></section>
-        <section class="panel-section" aria-labelledby="activityTitle"><div class="section-heading"><h3 id="activityTitle">Aktivitas terbaru</h3><span id="activityCount">0 run</span></div><ul id="runs" class="activity-list" aria-live="polite"><li class="empty">Belum ada aktivitas. Jalankan tugas dari OpenCode.</li></ul></section>
-        <section class="panel-section" aria-labelledby="queueTitle"><div class="section-heading"><h3 id="queueTitle">Antrean</h3><span id="queueCount">0 tugas</span></div><ul id="queue" class="queue-list" aria-live="polite"></ul><p id="queueEmpty" class="empty">Tidak ada tugas menunggu.</p></section>
-        <section class="panel-section guide" aria-labelledby="guideTitle"><div class="section-heading"><h3 id="guideTitle">Dari OpenCode</h3><span>Perintah</span></div><p>Buka URL dashboard dengan <code>/dashboard</code>. Ruang, agen, dan aktivitas mengikuti event OpenCode yang sedang berjalan.</p><div class="command-code"><code>/dashboard</code></div></section>
+        <section id="focusSection" class="panel-section focus-card" aria-labelledby="focusHeading" hidden><div class="section-heading"><h3 id="focusHeading">Current work</h3><span id="focusStation">Standby</span></div><div class="focus-body"><span id="focusRole" class="focus-role">OpenCode agent</span><span id="focusTask" class="focus-task">Waiting for a session</span><span id="focusActivity" class="focus-activity">No activity yet</span><span id="focusDetail" class="focus-detail">Start working on a feature in OpenCode.</span></div></section>
+        <section class="panel-section" aria-labelledby="activityTitle"><div class="section-heading"><h3 id="activityTitle">Recent activity</h3><span id="activityCount">0 runs</span></div><ul id="runs" class="activity-list" aria-live="polite"><li class="empty">No activity yet. Start a task in OpenCode.</li></ul></section>
+        <section class="panel-section" aria-labelledby="queueTitle"><div class="section-heading"><h3 id="queueTitle">Queue</h3><span id="queueCount">0 tasks</span></div><ul id="queue" class="queue-list" aria-live="polite"></ul><p id="queueEmpty" class="empty">No tasks waiting.</p></section>
+        <section class="panel-section guide" aria-labelledby="guideTitle"><div class="section-heading"><h3 id="guideTitle">From OpenCode</h3><span>Commands</span></div><p>Find the dashboard URL with <code>/dashboard</code>. Rooms, agents, and activity follow live OpenCode events.</p><div class="command-code"><code>/dashboard</code></div></section>
       </div>
     </aside>
-    <section class="crew" aria-labelledby="crewTitle"><div class="crew-heading"><span class="eyebrow">Tim studio</span><h2 id="crewTitle">Agen di lantai</h2><p id="crewCount">Memuat…</p></div><ul id="crew" class="crew-list" aria-live="polite"></ul></section>
+    <section class="crew" aria-labelledby="crewTitle"><div class="crew-heading"><span class="eyebrow">Studio team</span><h2 id="crewTitle">Agents on the floor</h2><p id="crewCount">Loading…</p></div><ul id="crew" class="crew-list" aria-live="polite"></ul></section>
   </div>
   <script src="/app.js" defer></script>
 </body>

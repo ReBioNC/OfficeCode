@@ -36,37 +36,37 @@ const ROLE_PILL: Record<string, string> = {
   "docs-writer": "#a7add5",
 };
 const ACTIVITY: Record<string, { label: string; persona: string; station: string; color: string }> = {
-  arriving: { label: "Menyiapkan ruang", persona: "Agen kerja", station: "pintu", color: "#f8be6a" },
-  thinking: { label: "Berpikir", persona: "Perencana", station: "meja ide", color: "#c6a2f6" },
-  reading: { label: "Membaca file", persona: "Pembaca kode", station: "rak referensi", color: "#8ea8f1" },
-  editing: { label: "Mengedit kode", persona: "Editor kode", station: "meja kode", color: "#ff827d" },
-  "web-search": { label: "Mencari di web", persona: "Peneliti web", station: "jendela web", color: "#67dccb" },
-  "code-search": { label: "Menelusuri kode", persona: "Peneliti kode", station: "rak referensi", color: "#8ea8f1" },
-  terminal: { label: "Menjalankan perintah", persona: "Operator terminal", station: "terminal", color: "#f8be6a" },
-  delegating: { label: "Berkoordinasi", persona: "Koordinator", station: "papan tugas", color: "#c6a2f6" },
-  working: { label: "Bekerja", persona: "Pelaksana", station: "meja kode", color: "#ff827d" },
-  approval: { label: "Menunggu izin", persona: "Menunggu keputusan", station: "pintu", color: "#f8be6a" },
-  done: { label: "Selesai", persona: "Selesai", station: "lounge", color: "#8ed9a2" },
-  blocked: { label: "Terhenti", persona: "Perlu bantuan", station: "pintu", color: "#ff827d" },
+  arriving: { label: "Setting up workspace", persona: "Agent", station: "door", color: "#f8be6a" },
+  thinking: { label: "Thinking", persona: "Planner", station: "idea desk", color: "#c6a2f6" },
+  reading: { label: "Reading files", persona: "Code reader", station: "reference shelf", color: "#8ea8f1" },
+  editing: { label: "Editing code", persona: "Code editor", station: "code desk", color: "#ff827d" },
+  "web-search": { label: "Searching the web", persona: "Web researcher", station: "web station", color: "#67dccb" },
+  "code-search": { label: "Searching code", persona: "Code researcher", station: "reference shelf", color: "#8ea8f1" },
+  terminal: { label: "Running commands", persona: "Terminal operator", station: "terminal", color: "#f8be6a" },
+  delegating: { label: "Coordinating", persona: "Coordinator", station: "task board", color: "#c6a2f6" },
+  working: { label: "Working", persona: "Developer", station: "code desk", color: "#ff827d" },
+  approval: { label: "Waiting for permission", persona: "Awaiting a decision", station: "door", color: "#f8be6a" },
+  done: { label: "Done", persona: "Done", station: "lounge", color: "#8ed9a2" },
+  blocked: { label: "Stopped", persona: "Needs help", station: "door", color: "#ff827d" },
 };
 const STATUS_LABEL: Record<string, string> = {
-  walking: "Menuju meja", thinking: "Berpikir", acting: "Bekerja",
-  "waiting-approval": "Perlu izin", blocked: "Terhambat",
-  "in-handoff": "Handoff", delivering: "Mengantar", done: "Selesai",
+  walking: "Walking to desk", thinking: "Thinking", acting: "Working",
+  "waiting-approval": "Needs permission", blocked: "Blocked",
+  "in-handoff": "Handoff", delivering: "Delivering", done: "Done",
 };
 const BUBBLE_TEXT: Record<string, (run: Run) => string | null> = {
-  thinking: () => "Berpikir…",
-  acting: (run) => `Kerja: ${short(run.prompt, 18)}`,
-  "waiting-approval": () => "Perlu izin !",
-  blocked: () => "Butuh bantuan !",
+  thinking: () => "Thinking…",
+  acting: (run) => `Work: ${short(run.prompt, 18)}`,
+  "waiting-approval": () => "Needs permission !",
+  blocked: () => "Needs help !",
   "in-handoff": () => "Handoff",
-  delivering: () => "Mengantar hasil",
-  done: () => "Selesai ✓",
+  delivering: () => "Delivering results",
+  done: () => "Done ✓",
 };
 
 const canvas = document.getElementById("floor") as HTMLCanvasElement;
 const context = canvas.getContext("2d");
-if (!context) throw new Error("Canvas 2D tidak tersedia");
+if (!context) throw new Error("Canvas 2D is unavailable");
 const ctx: CanvasRenderingContext2D = context;
 ctx.imageSmoothingEnabled = false;
 const statActive = document.getElementById("statActive") as HTMLSpanElement;
@@ -125,7 +125,7 @@ function element<K extends keyof HTMLElementTagNameMap>(tag: K, className: strin
 function renderConnection(): void {
   const online = streamReady && latestFetchOkay;
   connection.dataset.state = online ? "online" : "offline";
-  connection.textContent = online ? "Live · tersinkron" : "Menghubungkan ulang…";
+  connection.textContent = online ? "Live · synced" : "Reconnecting…";
 }
 
 function renderPanels(): void {
@@ -137,11 +137,11 @@ function renderPanels(): void {
   (document.getElementById("focusSection") as HTMLElement).hidden = !mirrorOnly;
   (document.getElementById("activityTracker") as HTMLElement).hidden = !mirrorOnly;
   if (mirrorOnly) {
-    (document.getElementById("focusStation") as HTMLElement).textContent = focus ? activityOf(focus).station : "Siaga";
-    (document.getElementById("focusRole") as HTMLElement).textContent = focus ? `Agen ${roleFor(focus)} · ${activityOf(focus).persona}` : "Agen OpenCode";
-    (document.getElementById("focusTask") as HTMLElement).textContent = focus?.prompt || "Menunggu sesi kerja";
-    (document.getElementById("focusActivity") as HTMLElement).textContent = focus ? activityOf(focus).label : "Belum ada aktivitas";
-    (document.getElementById("focusDetail") as HTMLElement).textContent = focus?.detail || "Mulai mengerjakan fitur di OpenCode.";
+    (document.getElementById("focusStation") as HTMLElement).textContent = focus ? activityOf(focus).station : "Standby";
+    (document.getElementById("focusRole") as HTMLElement).textContent = focus ? `Agent ${roleFor(focus)} · ${activityOf(focus).persona}` : "OpenCode agent";
+    (document.getElementById("focusTask") as HTMLElement).textContent = focus?.prompt || "Waiting for a session";
+    (document.getElementById("focusActivity") as HTMLElement).textContent = focus ? activityOf(focus).label : "No activity yet";
+    (document.getElementById("focusDetail") as HTMLElement).textContent = focus?.detail || "Start working on a feature in OpenCode.";
     const activeModes = new Set(sessions.map((run) => {
       if (run.activity === "code-search") return "reading";
       if (run.activity === "working") return "editing";
@@ -156,12 +156,12 @@ function renderPanels(): void {
   statActive.textContent = String(mirrorOnly ? sessions.filter((run) => run.state !== "done" && run.state !== "blocked").length : Object.keys(occupants).length);
   statQueue.textContent = String(queue.length);
   statSpent.textContent = `$${spentEstimated < 1 ? spentEstimated.toFixed(4) : spentEstimated.toFixed(2)}`;
-  (document.getElementById("floorMeta") as HTMLElement).textContent = mirrorOnly ? `1 kantor · ${sessions.length} agen` : `${office.rooms.length} ruang · ${office.desks.length} meja`;
-  (document.getElementById("crewCount") as HTMLElement).textContent = mirrorOnly ? `${sessions.length} agen terlihat` : `${office.desks.length} slot tersedia`;
-  (document.getElementById("activityCount") as HTMLElement).textContent = `${runs.length} run`;
-  (document.getElementById("queueCount") as HTMLElement).textContent = `${queue.length} tugas`;
+  (document.getElementById("floorMeta") as HTMLElement).textContent = mirrorOnly ? `1 studio · ${sessions.length} ${sessions.length === 1 ? "agent" : "agents"}` : `${office.rooms.length} rooms · ${office.desks.length} desks`;
+  (document.getElementById("crewCount") as HTMLElement).textContent = mirrorOnly ? `${sessions.length} ${sessions.length === 1 ? "agent" : "agents"} visible` : `${office.desks.length} slots available`;
+  (document.getElementById("activityCount") as HTMLElement).textContent = `${runs.length} ${runs.length === 1 ? "run" : "runs"}`;
+  (document.getElementById("queueCount") as HTMLElement).textContent = `${queue.length} ${queue.length === 1 ? "task" : "tasks"}`;
   (document.getElementById("queueEmpty") as HTMLElement).hidden = queue.length > 0;
-  (document.getElementById("lastSync") as HTMLElement).textContent = `Sinkron ${new Date().toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}`;
+  (document.getElementById("lastSync") as HTMLElement).textContent = `Synced ${new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}`;
   const roomSlots = office.rooms.length <= 5 ? office.rooms.length + 1 : office.rooms.length;
   const floorHeight = mirrorOnly ? 560 : Math.max(560, 124 + Math.ceil(roomSlots / 3) * 218);
   if (canvas.height !== floorHeight) canvas.height = floorHeight;
@@ -175,7 +175,7 @@ function renderPanels(): void {
     if (mirrorOnly && run.detail) item.append(element("p", "activity-detail", short(run.detail, 100)));
     return item;
   });
-  if (activityNodes.length === 0) activityNodes.push(element("li", "empty", "Belum ada aktivitas. Jalankan tugas dari OpenCode."));
+  if (activityNodes.length === 0) activityNodes.push(element("li", "empty", "No activity yet. Start a task in OpenCode."));
   runsUl.replaceChildren(...activityNodes);
 
   queueUl.replaceChildren(...queue.map((entry) => {
@@ -221,8 +221,8 @@ function renderPanels(): void {
     const copy = element("div", "crew-copy");
     copy.append(
       element("span", "crew-name", run?.role ?? desk.label),
-      element("span", "crew-meta", `${room?.name ?? "Ruang"} · ${desk.label}`),
-      element("span", "crew-status", run ? label(run.state) : runId ? "Memuat run…" : "Meja kosong"),
+      element("span", "crew-meta", `${room?.name ?? "Room"} · ${desk.label}`),
+      element("span", "crew-status", run ? label(run.state) : runId ? "Loading run…" : "Empty desk"),
     );
     card.append(avatar, copy);
     return card;
@@ -261,7 +261,7 @@ async function snapshot(): Promise<void> {
         draw();
       } catch {
         latestFetchOkay = false;
-        (document.getElementById("lastSync") as HTMLElement).textContent = "Data belum terbarui";
+        (document.getElementById("lastSync") as HTMLElement).textContent = "Data has not refreshed";
         if (retryTimer === undefined) {
           retryTimer = window.setTimeout(() => { retryTimer = undefined; void snapshot(); }, 3000);
         }
@@ -333,7 +333,7 @@ function drawStudioShell(): void {
     ctx.fillStyle = "#261f3b"; ctx.fillRect(wx - 3, 97, 145, 5);
     ctx.fillStyle = "#bd839e"; ctx.fillRect(wx + 6, 97, 127, 2);
   }
-  plate("OFFICECODE / STUDIO MALAM", 48, 52, "#f8be6a");
+  plate("OFFICECODE / NIGHT STUDIO", 48, 52, "#f8be6a");
   textOnCanvas("LIVE / 01", 842, 52, "#f5d8cb", 11);
   ctx.fillStyle = "#15172f"; ctx.fillRect(31, 101, 898, 6);
   ctx.fillStyle = "#f8be6a"; ctx.fillRect(31, 101, 898, 2);
@@ -399,7 +399,7 @@ function drawShell(): void {
     ctx.fillRect(wx + 4, 58, 59, 3);
   }
   plate(mirrorOnly ? "OFFICECODE / OPEN OFFICE" : "OFFICECODE / HQ", 42, 47, "#e9dfcd");
-  textOnCanvas(mirrorOnly ? "SATU KANTOR" : "LIVE FLOOR", 806, 51, "#726963", 11);
+  textOnCanvas(mirrorOnly ? "ONE OFFICE" : "LIVE FLOOR", 806, 51, "#726963", 11);
   ctx.fillStyle = COLORS.floor;
   ctx.fillRect(34, 88, 892, floorBottom - 88);
   ctx.fillStyle = COLORS.floorLine;
@@ -522,7 +522,7 @@ function drawLounge(): void {
   drawSprite(ctx, TABLE_MAP, TABLE_PALETTE, snap(r.x + 109), snap(r.y + 109), 2);
   drawSprite(ctx, PLANT_MAP, PLANT_PALETTE, snap(r.x + r.w - 39), snap(r.y + 71), 2);
   const completed = runs.filter((run) => run.state === "done").length;
-  textOnCanvas(`${completed} HASIL SELESAI`, r.x + 25, r.y + 166, COLORS.light, 11);
+  textOnCanvas(`${completed} RESULTS READY`, r.x + 25, r.y + 166, COLORS.light, 11);
   for (let i = 0; i < Math.min(completed, 3); i++) {
     ctx.fillStyle = "#b7814f";
     ctx.fillRect(snap(r.x + r.w - 80 + i * 17), snap(r.y + 162), 14, 13);
@@ -622,10 +622,10 @@ function drawOfficeFurniture(tick: number, active: Set<OfficeStation>, editingCo
   drawRug(49, 300, 542, 212, "#6869a4", "#343660");
   drawRug(611, 300, 303, 212, "#dd917c", "#493c60");
   plate("IDEA POD", 59, 131, "#f2a1aa");
-  plate("ATELIER / RENCANA", 302, 131, "#cbb5f1");
-  plate("PUSTAKA DIGITAL", 618, 131, "#86e5d4");
-  plate("MEJA KERJA", 59, 307, "#aca9e0");
-  plate("OPS / KOPI", 623, 307, "#f8bd91");
+  plate("PLANNING ATELIER", 302, 131, "#cbb5f1");
+  plate("DIGITAL LIBRARY", 618, 131, "#86e5d4");
+  plate("WORKSTATIONS", 59, 307, "#aca9e0");
+  plate("OPS / COFFEE", 623, 307, "#f8bd91");
 
   // Wall art, corkboard, and a lounge seat make the idea area recognizable.
   ctx.fillStyle = INK; ctx.fillRect(68, 166, 45, 34);
@@ -878,8 +878,8 @@ function drawSessionFloor(tick: number, now: number): void {
     agentPositions.clear();
     doorOpenness.clear();
     drawStudioDoors(now);
-    plate("STUDIO SIAGA", 384, 377, "#f8be6a");
-    textOnCanvas("Mulai sesi OpenCode untuk melihat agen bekerja.", 282, 411, COLORS.light, 12);
+    plate("STUDIO STANDBY", 384, 377, "#f8be6a");
+    textOnCanvas("Start an OpenCode session to see agents at work.", 282, 411, COLORS.light, 12);
     return;
   }
   drawStudioDoors(now);
@@ -887,9 +887,9 @@ function drawSessionFloor(tick: number, now: number): void {
   const primary = sessions[0];
   ctx.fillStyle = "#1b1d3b"; ctx.fillRect(42, 530, 610, 16);
   ctx.fillStyle = activityOf(primary).color; ctx.fillRect(42, 530, 5, 16);
-  textOnCanvas(short(primary.prompt || "Sesi OpenCode", 47), 54, 532, COLORS.light, 11);
+  textOnCanvas(short(primary.prompt || "OpenCode session", 47), 54, 532, COLORS.light, 11);
   const activeCount = sessions.filter((run) => run.state !== "done" && run.state !== "blocked").length;
-  textOnCanvas(activeCount + " AGEN AKTIF", 792, 532, COLORS.light, 11);
+  textOnCanvas(`${activeCount} ACTIVE ${activeCount === 1 ? "AGENT" : "AGENTS"}`, 792, 532, COLORS.light, 11);
 }
 
 function draw(now = performance.now()): void {
@@ -900,7 +900,7 @@ function draw(now = performance.now()): void {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   drawShell();
   if (office.rooms.length === 0) {
-    plate("MENUNGGU DENAH KANTOR", 340, 266);
+    plate("WAITING FOR OFFICE LAYOUT", 340, 266);
     return;
   }
   const rects = new Map(office.rooms.map((room, index) => [room.id, roomRect(index, canvas.width, office.rooms.length)]));

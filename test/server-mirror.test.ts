@@ -39,6 +39,7 @@ describe("mirror api", () => {
   it("registers, streams, and finishes an opencode session", async () => {
     const reg = await mirror("/api/mirror/session", { sessionId: "ses-a", role: "build", prompt: "make x" });
     assert.equal(reg.status, 201);
+    assert.equal((reg.json["run"] as { detail: string }).detail, "Setting up workspace");
     const deskId = (reg.json["run"] as { deskId: string }).deskId;
     assert.ok(deskId);
     const ev = await mirror("/api/mirror/event", { sessionId: "ses-a", state: "acting", message: "edit x" });
@@ -46,6 +47,7 @@ describe("mirror api", () => {
     assert.equal((ev.json["run"] as { state: string }).state, "acting");
     const fin = await mirror("/api/mirror/finish", { sessionId: "ses-a", outcome: "done" });
     assert.equal(fin.status, 200);
+    assert.equal((fin.json["run"] as { detail: string }).detail, "Session complete");
     const office = (await (await fetch(`${base}/api/office`)).json()) as { occupants: Record<string, string> };
     assert.equal(deskId in office.occupants, false);
   });

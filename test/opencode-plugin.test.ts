@@ -140,7 +140,7 @@ describe("opencode plugin", () => {
     const run = out.runs.find((entry) => entry.sessionId === sid);
     assert.equal(run?.role, "build");
     assert.equal(run?.activity, "reading");
-    assert.match(run?.detail ?? "", /search\.ts/);
+    assert.equal(run?.detail, "Reading search.ts");
     const edited = await drive([{ call: "tool.execute.before", input: { sessionID: sid, tool: "edit" }, output: { args: { filePath: "src/search.ts" } } }]);
     assert.equal(edited.runs.find((entry) => entry.sessionId === sid)?.activity, "editing");
     const searched = await drive([{ call: "tool.execute.before", input: { sessionID: sid, tool: "websearch" }, output: { args: { query: "search docs" } } }]);
@@ -197,7 +197,9 @@ describe("opencode plugin", () => {
       assert.notEqual(out.url, `http://127.0.0.1:${TEST_PORT}`);
       assert.equal((await fetch(out.url)).status, 200);
       assert.equal((await fetch(`${out.url}/app.js`)).status, 200);
-      assert.equal((await fetch(`${out.url}/api/runs`, { method: "POST" })).status, 403);
+      const dispatch = await fetch(`${out.url}/api/runs`, { method: "POST" });
+      assert.equal(dispatch.status, 403);
+      assert.equal((await dispatch.json()).error, "The global dashboard mirrors OpenCode sessions; start tasks in OpenCode.");
       assert.equal(fs.existsSync(path.join(other, ".officecode")), false);
     } finally {
       if (pid) process.kill(pid);

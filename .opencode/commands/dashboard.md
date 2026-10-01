@@ -1,5 +1,5 @@
 ---
-description: Tampilkan URL dan status dashboard OfficeCode untuk proyek ini
+description: Show the OfficeCode dashboard URL and status for this project
 ---
 
-Jalankan `node scripts/dashboard-url.cjs` dari root proyek OfficeCode, lalu tampilkan hasilnya secara singkat. Dashboard hanya memantulkan sesi OpenCode; semua model tetap dipilih dan dijalankan oleh OpenCode.
+Run `node scripts/dashboard-url.cjs` from the OfficeCode project root, then report the result briefly in English. The dashboard only mirrors OpenCode sessions; OpenCode still selects and runs every model.

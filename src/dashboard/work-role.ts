@@ -16,10 +16,10 @@ function explicitRole(name: string): string | undefined {
   if (/\b(database|db engineer)\b/.test(value)) return "Database";
   if (/\b(devops|infra)\b/.test(value)) return "DevOps";
   if (/\b(api)\b/.test(value)) return "API";
-  if (/\b(docs|writer)\b/.test(value)) return "Dokumentasi";
-  if (/\b(researcher|explore)\b/.test(value)) return "Riset";
-  if (/\b(architect)\b/.test(value)) return "Arsitek";
-  if (/\b(plan|pm)\b/.test(value)) return "Perencana";
+  if (/\b(docs|writer)\b/.test(value)) return "Documentation";
+  if (/\b(researcher|explore)\b/.test(value)) return "Researcher";
+  if (/\b(architect)\b/.test(value)) return "Architect";
+  if (/\b(plan|pm)\b/.test(value)) return "Planner";
   if (/\b(debugger)\b/.test(value)) return "Debugger";
   return undefined;
 }
@@ -35,8 +35,8 @@ function taskRole(value: string): string | undefined {
   if (front) return "Frontend";
   if (back) return "Backend";
   if (/deploy|pipeline|docker|infra|\bci\b/.test(text)) return "DevOps";
-  if (/readme|dokumentasi|documentation|\bdocs\b/.test(text)) return "Dokumentasi";
-  if (/riset|research|referensi|mencari di web/.test(text)) return "Riset";
+  if (/readme|dokumentasi|documentation|\bdocs\b/.test(text)) return "Documentation";
+  if (/riset|research|referensi|mencari di web/.test(text)) return "Researcher";
   return undefined;
 }
 

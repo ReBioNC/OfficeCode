@@ -40,6 +40,8 @@ When OpenCode loads the project, the plugin starts the dashboard server automati
 
 ### What the dashboard shows
 
+Dashboard titles, room signs, activity labels, role labels, speech bubbles, accessibility labels, plugin notifications, and `/dashboard` status messages use English. Session titles, prompts, file names, search queries, and custom agent names retain their original text from OpenCode.
+
 Walking uses eight poses in each of four directions and a fixed speed based on elapsed time. The browser redraws moving agents with `requestAnimationFrame`, caches the static office artwork, and lowers the redraw rate while agents are seated. Animation pauses in hidden tabs and stops when no agents remain. Reduced-motion mode shows agents directly at their activity station.
 
 All active OpenCode sessions share one pixel-art studio. Its original night palette, sunset skyline, colorful work rugs, idea corner, planning atelier, digital library, workstations, and coffee area are drawn in code. Desks have distinct monitors and keyboards. Each visible agent moves to the relevant station as OpenCode reports work: planning, reading files, editing code, searching the web or codebase, running terminal commands, coordinating tools, and waiting for permission. Agents sit at their computers with alternating typing poses for workstation activity. During planning they sit at the meeting table, gesture, and show their actual OpenCode activity in speech bubbles; a coordination cue appears when one of the agents is delegating. Partitions separate the work areas, and sliding doors open as agents approach. Agents take horizontal and vertical routes through these doorways and avoid furniture. Movement between stations is animated and respects reduced-motion settings. Agents have stable, varied skin and hair colors while their shirt color follows their displayed work role. The sidebar shows each agent's work role, task title, and latest action. Agents disappear from the floor and crew deck as soon as their task finishes. Their activity history remains in the sidebar, and the next prompt starts a new visible turn.
@@ -47,6 +49,23 @@ All active OpenCode sessions share one pixel-art studio. Its original night pale
 These states come from OpenCode session, message, tool, and permission events. The dashboard labels a single visible agent **Fullstack**. With multiple agents, it uses explicit OpenCode agent roles where available and otherwise infers a work role from the task text (for example Frontend, Backend, Auditor, or QA). The original OpenCode agent name remains in the agent card. These labels describe the visualization and do not assign a new OpenCode agent. The plugin does not make extra model requests for animation or role labels.
 
 The dashboard stops when OpenCode closes. If OpenCode exits unexpectedly, its lease expires and the dashboard normally stops about 7–8 seconds after the last heartbeat. If another OpenCode window is still using the same project, the dashboard stays online until the last window closes.
+
+## Local API
+
+The server listens on localhost. Status messages and generated activity details use English.
+
+| Endpoint | Behavior |
+|---|---|
+| `GET /api/health` | Service identity, workspace, and health |
+| `GET /api/office` | Office layout, occupants, and mirror mode |
+| `GET /api/runs`, `GET /api/runs/:id` | Run history or details |
+| `POST /api/runs` | Dispatch a run in development mode; global plugin mode returns `403` with an English message directing users to start tasks in OpenCode |
+| `GET /api/queue` | Waiting tasks |
+| `GET/PUT /api/models` | Model slots; PUT replaces the whole configuration |
+| `GET /api/models/opencode` | Best-effort workspace OpenCode model configuration |
+| `GET/PUT /api/budgets` | Budget configuration and estimated spend (`est.`) |
+| `POST /api/mirror/session`, `/api/mirror/event`, `/api/mirror/finish` | Mirror OpenCode session activity and completion |
+| `GET /api/events` | Server-sent events for dashboard updates |
 
 ## File locations
 

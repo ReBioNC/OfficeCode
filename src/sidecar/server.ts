@@ -146,7 +146,7 @@ export async function startServer(workspaceDir: string, port: number, options: {
     }
     if (req.method === "POST" && url.pathname === "/api/runs") {
       if (process.env["OFFICECODE_MIRROR_ONLY"] === "1") {
-        sendJson(res, 403, { error: "Dashboard global mengikuti sesi OpenCode; jalankan tugas dari OpenCode." });
+        sendJson(res, 403, { error: "The global dashboard mirrors OpenCode sessions; start tasks in OpenCode." });
         return;
       }
       const MAX_BODY = 1_000_000;

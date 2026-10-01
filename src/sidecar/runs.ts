@@ -100,7 +100,7 @@ export async function registerMirrorRun(
     state: "walking",
     sessionId: input.sessionId,
     activity: "arriving",
-    detail: "Menyiapkan ruang kerja",
+    detail: "Setting up workspace",
     transcriptPath: path.join(store.dir, "transcripts", `${id}.md`),
     outboxDir: path.join(store.dir, "outbox", id),
     exitCode: null,
@@ -143,7 +143,7 @@ export async function finishMirrorRun(
   appendEvent(store.dir, makeEvent(nextSeq(store.dir), run.id, "run.finished", { state: outcome }));
   setState(store, run, outcome, message);
   run.activity = outcome;
-  run.detail = outcome === "done" ? "Sesi selesai" : "Sesi terhenti";
+  run.detail = outcome === "done" ? "Session complete" : "Session stopped";
   store.occupants.delete(run.deskId);
   mirrorBySession.delete(sessionId);
   notifyRun(run);
