@@ -176,14 +176,78 @@ If `XDG_CONFIG_HOME` is set, the installer uses `$XDG_CONFIG_HOME/opencode/`. Da
 
 ## Update
 
+### Update with an OpenCode agent
+
+Open OpenCode in its global configuration folder using the [installation instructions](#install-with-an-opencode-agent), select the **Build** agent, and paste the prompt below. It updates the existing OfficeCode checkout and reinstalls the global plugin at the same location.
+
+**Copy and paste this prompt:**
+
+```text
+Update my existing GLOBAL OfficeCode plugin from
+https://github.com/ReBioNC/OfficeCode.git.
+
+1. Resolve the global OpenCode configuration directory:
+   - If XDG_CONFIG_HOME is set: <XDG_CONFIG_HOME>/opencode
+   - Otherwise: <my home directory>/.config/opencode, including Windows
+   Read plugins/office-dashboard.json to find the installed checkout's
+   absolute root. Also check OFFICECODE_ROOT, which takes precedence when
+   it points to a valid checkout. Do not assume the checkout is inside
+   the OpenCode configuration folder or clone a second copy.
+   If the checkout cannot be found, ask me for its location.
+
+2. Check git, node, npm, and opencode are available. Verify that the
+   checkout is the OfficeCode repository. Inspect its current branch,
+   upstream, remote, and working tree before changing files.
+   Preserve local changes. If it has uncommitted changes, no upstream,
+   or a diverged branch, explain the issue and ask how I want to proceed.
+   Do not reset, discard, stash, or switch branches automatically.
+
+3. From the verified checkout, run git pull --ff-only using the current
+   branch's configured upstream. If it fails, stop and report the error.
+   Read the updated README and scripts/install-global.cjs, then run
+   npm ci and npm run install:opencode. Stop on any failed command.
+   This rebuilds the dashboard and reinstalls these global files:
+   - <config directory>/plugins/office-dashboard.js
+   - <config directory>/plugins/office-dashboard.json
+   - <config directory>/commands/dashboard.md
+   Use the installer's backup behavior for changed OfficeCode files.
+
+4. Preserve my OpenCode settings, provider credentials, model choices,
+   other plugins, and dashboard activity data. Keep the existing checkout
+   at its permanent path. Do not update the OpenCode application itself,
+   start npm run dev, or set a mock driver for this plugin update.
+
+5. Verify the installed plugin matches the updated checkout's source,
+   the JSON root points to its absolute path, the global /dashboard
+   command refers to its scripts/dashboard-url.cjs, and
+   dist/src/sidecar/index.js plus dashboard/public/app.js exist.
+   Report the checkout path, branch, commit before and after the update,
+   installed file paths, and verification results in English.
+   If there were no new commits, say that it was already up to date.
+
+6. Tell me to close all OpenCode instances after this task finishes,
+   reopen OpenCode in a project, run /dashboard, and refresh the browser
+   with Ctrl+F5 (or a hard reload) to load the updated dashboard.
+   The server starts when the plugin loads; /dashboard is read-only.
+   All models remain managed by OpenCode.
+
+Do not claim the update succeeded unless the commands and file checks
+passed. Runtime verification happens after restarting OpenCode; clearly
+report anything that still needs checking.
+```
+
+### Update from a terminal
+
 To get the latest OfficeCode changes and reinstall the global plugin:
 
 ```bash
 cd /path/to/OfficeCode
-git pull
+git pull --ff-only
 npm ci
 npm run install:opencode
 ```
+
+Run these commands from a clean checkout on the branch you want to update. If Git cannot fast-forward, resolve the local changes or branch divergence before continuing. After a successful update, close all OpenCode instances, reopen OpenCode in a project, run `/dashboard`, and hard-refresh the browser to load the new dashboard.
 
 Updating the OpenCode application does not normally require reinstalling OfficeCode. A future OpenCode release may change its plugin API and require an OfficeCode update. After updating OpenCode, reopen it and check `/dashboard`.
 
