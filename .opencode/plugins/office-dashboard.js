@@ -200,8 +200,7 @@ export const OfficeDashboardPlugin = async ({ client, directory }) => {
       if (event.type === "session.updated") {
         const sid = sessionIdOf(event);
         const title = event.properties?.info?.title;
-        if (sid && typeof title === "string" && title.trim()) {
-          await beginSession(sid, title);
+        if (sid && activeSessions.has(sid) && typeof title === "string" && title.trim()) {
           await post(await ensure(), "/api/mirror/session", { sessionId: sid, role: "opencode", prompt: title });
         }
       }
@@ -219,7 +218,8 @@ export const OfficeDashboardPlugin = async ({ client, directory }) => {
         await beginSession(sid);
         if (sid) await post(await ensure(), "/api/mirror/event", { sessionId: sid, state: "thinking", activity: "thinking", detail: "Menyusun langkah berikutnya" });
       }
-      if (event.type === "session.idle" || event.type === "session.deleted" || event.type === "session.error") {
+      if (event.type === "session.idle" || event.type === "session.deleted" || event.type === "session.error"
+        || (event.type === "session.status" && event.properties?.status?.type === "idle")) {
         const sid = sessionIdOf(event);
         if (sid) {
           await post(await ensure(), "/api/mirror/finish", { sessionId: sid,

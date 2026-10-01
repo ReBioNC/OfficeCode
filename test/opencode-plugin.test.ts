@@ -157,6 +157,24 @@ describe("opencode plugin", () => {
     assert.equal(run?.prompt, "Build search filters");
     assert.equal(run?.role, "explore");
   });
+  it("does not reopen a completed task when late title metadata arrives", async () => {
+    const sid = "plug-late-title";
+    const out = await drive([
+      { call: "event", event: { type: "session.created", properties: { info: { id: sid, title: "Build a feature" } } } },
+      { call: "event", event: { type: "session.idle", properties: { sessionID: sid } } },
+      { call: "event", event: { type: "session.updated", properties: { info: { id: sid, title: "Feature complete" } } } },
+    ]);
+    assert.equal(out.runs.filter((entry) => entry.sessionId === sid).length, 1);
+    assert.equal(out.runs.find((entry) => entry.sessionId === sid)?.state, "done");
+  });
+  it("finishes a task on an idle status event", async () => {
+    const sid = "plug-status-idle";
+    const out = await drive([
+      { call: "chat.message", input: { sessionID: sid, agent: "build" } },
+      { call: "event", event: { type: "session.status", properties: { sessionID: sid, status: { type: "idle" } } } },
+    ]);
+    assert.equal(out.runs.find((entry) => entry.sessionId === sid)?.state, "done");
+  });
   it("never throws when the sidecar is down", async () => {
     const out = await drive(
       [

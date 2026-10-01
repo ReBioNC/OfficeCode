@@ -184,6 +184,47 @@ export const CHAR_FRAMES: Record<FrameName, PixelMap> = {
   talkB: [...HEAD, ...TORSO_TALK_B, ...LEGS_SEATED],
 };
 
+const HEAD_SIDE: PixelMap = [
+  "....OOOO....", "...OHHHHO...", "...OHHSSSO..",
+  "...OHHSESO..", "...OSSSSSO..", "....OSSSO...",
+];
+const TORSO_SIDE: PixelMap = [
+  "...OOCCOO...", "...OCCCCOS..", "...OCCCCOS..", "....OCCCO...",
+];
+
+function buildWalkFrames(head: PixelMap, side: boolean): PixelMap[] {
+  const strides = [0, 1, 2, 1, 0, -1, -2, -1];
+  return strides.map((stride, phase) => {
+    const pixels = [...head, ...(side ? TORSO_SIDE : TORSO_IDLE), ...Array(4).fill("............")]
+      .map((row) => [...row]);
+    const armPhase = phase < 4 ? phase : (phase + 2) % 4;
+    const left = side ? 4 + stride : 3 + (stride === 2 ? -1 : stride === -2 ? 1 : 0);
+    const right = side ? 6 - stride : 7 + (stride === 2 ? 1 : stride === -2 ? -1 : 0);
+    for (const [x, bootY] of [[left, 12 + Math.sign(stride)], [right, 12 - Math.sign(stride)]]) {
+      for (let y = 10; y <= bootY; y++) {
+        pixels[y][x] = y === bootY ? "W" : "P";
+        pixels[y][x + 1] = y === bootY ? "W" : "P";
+      }
+    }
+    if (side) {
+      pixels[7][9] = pixels[8][9] = ".";
+      pixels[6 + armPhase][9] = "S";
+      pixels[7 + armPhase][9] = "S";
+    } else {
+      for (const x of [1, 10]) pixels[7][x] = pixels[8][x] = ".";
+      pixels[6 + armPhase][1] = "S";
+      pixels[9 - armPhase][10] = "S";
+    }
+    return pixels.map((row) => row.join(""));
+  });
+}
+
+const WALK_EAST = buildWalkFrames(HEAD_SIDE, true);
+export const WALK_FRAMES: Record<"north" | "south" | "east" | "west", PixelMap[]> = {
+  north: buildWalkFrames(HEAD_AT_COMPUTER, false), south: buildWalkFrames(HEAD, false),
+  east: WALK_EAST, west: WALK_EAST.map((frame) => frame.map((row) => [...row].reverse().join(""))),
+};
+
 export const DESK_MAP: PixelMap = [
   "OOOOOOOOOOOOOOOOOO",
   "OWWWWWWWWWWWWWWWWO",
