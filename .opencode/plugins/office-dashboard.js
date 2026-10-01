@@ -207,8 +207,8 @@ export const OfficeDashboardPlugin = async ({ client, directory }) => {
       if (event.type === "message.updated" && event.properties?.info?.role === "user") {
         const info = event.properties.info;
         const sid = sessionIdOf(info);
-        if (sid && typeof info.agent === "string") {
-          await beginSession(sid);
+        // Metadata can arrive after idle. Only a prompt hook or busy status starts a new turn.
+        if (sid && activeSessions.has(sid) && typeof info.agent === "string") {
           await post(await ensure(), "/api/mirror/event", { sessionId: sid, state: "thinking", activity: "thinking",
             role: info.agent, detail: "Planning the next steps" });
         }

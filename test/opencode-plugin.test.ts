@@ -175,6 +175,18 @@ describe("opencode plugin", () => {
     ]);
     assert.equal(out.runs.find((entry) => entry.sessionId === sid)?.state, "done");
   });
+  it("ignores late user-message metadata after idle but shows the next genuine prompt", async () => {
+    const sid = "plug-late-user-metadata";
+    const out = await drive([
+      { call: "chat.message", input: { sessionID: sid, agent: "frontend-dev" } },
+      { call: "event", event: { type: "session.idle", properties: { sessionID: sid } } },
+      { call: "event", event: { type: "message.updated", properties: { info: { sessionID: sid, role: "user", agent: "frontend-dev" } } } },
+    ]);
+    assert.equal(out.runs.filter((run) => run.sessionId === sid).length, 1);
+    assert.equal(out.runs.find((run) => run.sessionId === sid)?.state, "done");
+    const next = await drive([{ call: "chat.message", input: { sessionID: sid, agent: "backend-dev" } }]);
+    assert.ok(next.runs.some((run) => run.sessionId === sid && run.state === "thinking" && run.role === "backend-dev"));
+  });
   it("never throws when the sidecar is down", async () => {
     const out = await drive(
       [
