@@ -2,6 +2,14 @@
 
 OfficeCode shows [OpenCode](https://opencode.ai/) session activity as a pixel-art office in your browser. Its global plugin mirrors sessions, tool activity, and permission requests to a local dashboard. **OpenCode still selects and runs every model**; the dashboard does not run models on its own.
 
+## Preview
+
+![OfficeCode studio with Frontend, Backend, and QA agents running test sessions](docs/assets/studio-preview.png)
+
+Three real OpenCode sessions running Frontend, Backend, and QA checks in one studio. Captured in an isolated test workspace.
+
+To replace the screenshot or add another image, see [Updating README images](docs/README-PREVIEW.md).
+
 ## Requirements
 
 - The OpenCode CLI must be installed and the `opencode` command must be available in your terminal. This integration has been tested with OpenCode 1.18.33.
