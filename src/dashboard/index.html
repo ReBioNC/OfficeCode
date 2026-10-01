@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#0b0e20" />
   <title>OfficeCode — Night Studio</title>
   <style>
-    :root { color-scheme: dark; --ink:#fff1df; --night:#0b0e20; --paper:#1c1e3b; --light:#292b4e; --line:#434361; --muted:#adaac6; --sage:#67dccb; --red:#ff827d; --accent:#f8be6a; font-family:"Trebuchet MS",Arial,sans-serif; }
+    :root { color-scheme: dark; --ink:#fff1df; --night:#0b0e20; --paper:#1c1e3b; --light:#292b4e; --line:#434361; --muted:#adaac6; --sage:#67dccb; --red:#ff827d; --accent:#f8be6a; --panel:#242542; --frame:#8c5d88; --stage-glow:#292444; --avatar:#414266; --success:#9ae2b0; --active-bg:#664460; font-family:"Trebuchet MS",Arial,sans-serif; }
     * { box-sizing:border-box; }
     body { margin:0; min-width:320px; background:var(--night); color:var(--ink); }
     .app { display:grid; grid-template-columns:minmax(0,1.78fr) minmax(350px,.98fr); grid-template-rows:minmax(0,1fr) 126px; height:100dvh; min-height:620px; overflow:hidden; }
@@ -92,6 +92,39 @@
     .crew-card[data-state="blocked"] .crew-status { color:#ff9e9b; }
     .crew-card[data-state="free"] .crew-status { color:#b8b2cd; }
     :focus-visible { outline:3px solid #81e8da; outline-offset:3px; }
+    /* Time-of-day colors share one vocabulary across the studio and panels. */
+    .floor-status { display:flex; flex-direction:column; align-items:flex-end; gap:6px; }
+    #studioClock { color:var(--muted); font:11px "Courier New",monospace; white-space:nowrap; }
+    h1 span { color:var(--red); }
+    .floor-meta,.floor-footer { color:var(--muted); }
+    .floor-header,.floor-footer { border-color:var(--line); }
+    .floor-stage { background:radial-gradient(circle at 50% 35%,var(--stage-glow) 0%,var(--night) 72%); }
+    .command-center { border-color:var(--frame); box-shadow:inset 1px 0 var(--night); }
+    .command-header,.metrics,.focus-card,.guide,.activity-tracker { background:var(--panel); }
+    .view-tag { background:var(--paper); color:var(--accent); }
+    .connection,.run-state,.activity-detail,.focus-activity,.crew-status { color:var(--sage); }
+    .connection::before { background:var(--sage); box-shadow:0 0 0 2px var(--avatar); }
+    .connection[data-state="offline"],.activity-item[data-state="blocked"] .run-state,.crew-card[data-state="blocked"] .crew-status { color:var(--red); }
+    .connection[data-state="offline"]::before { box-shadow:0 0 0 2px var(--avatar); }
+    .activity-chip { background:var(--light); border-color:var(--line); color:var(--muted); }
+    .activity-chip[data-active="true"] { background:var(--active-bg); border-color:var(--red); color:var(--ink); box-shadow:inset 0 -3px var(--red); }
+    .activity-item,.focus-body,.empty,.queue-list,.crew-card,.crew-avatar,.command-code code,.crew-heading { border-color:var(--line); }
+    .activity-item { border-left-color:var(--sage); }
+    .activity-item[data-state="blocked"],.focus-body { border-left-color:var(--red); }
+    .activity-item[data-state="done"] { border-left-color:var(--success); }
+    .activity-item[data-state="done"] .run-state { color:var(--success); }
+    .activity-prompt,.focus-detail { color:var(--ink); }
+    .focus-body,.crew-card { background:var(--light); }
+    .focus-role,.guide p,.crew-card[data-state="free"] .crew-status { color:var(--muted); }
+    .queue-list { background:var(--line); }
+    .queue-number,.command-code code { color:var(--accent); }
+    .command-code code { background:var(--light); }
+    .crew { background:var(--panel); border-top-color:var(--night); }
+    .crew-card { box-shadow:2px 2px 0 var(--night); }
+    .crew-avatar { background:var(--avatar); }
+    .crew-avatar.empty-avatar { color:var(--muted); }
+    .center-scroll,.crew-list { scrollbar-color:var(--frame) transparent; }
+    :focus-visible { outline-color:var(--sage); }
     @media (max-width:960px) { .app { display:flex; flex-direction:column; height:auto; min-height:100dvh; overflow:visible; } .floor-stage { height:min(65vw,600px); min-height:250px; } .command-center { border-left:0; border-top:4px solid #8c5d88; box-shadow:none; } .center-scroll { overflow:visible; } .crew { order:2; min-height:126px; } }
     @media (max-width:540px) { .floor-header { padding:12px 15px; } .floor-meta { font-size:8px; } .floor-stage { display:block; padding:8px; height:440px; overflow-x:auto; overflow-y:hidden; } #floor { width:720px; height:420px; max-width:none; } .floor-footer { padding:0 15px; font-size:9px; } .metric { padding:12px 10px; } .metric-value { font-size:19px; } .metric-value.money { font-size:14px; } .crew-heading { flex-basis:100px; padding-left:10px; } }
   </style>
@@ -99,7 +132,7 @@
 <body>
   <div class="app">
     <main class="floor-panel" aria-label="Live office floor">
-      <header class="floor-header"><div><p class="eyebrow">Night studio / live feed</p><h1>Office<span>Code</span> Studio</h1></div><span id="floorMeta" class="floor-meta">Loading studio…</span></header>
+      <header class="floor-header"><div><p id="studioPeriod" class="eyebrow">Studio / live feed</p><h1>Office<span>Code</span> Studio</h1></div><div class="floor-status"><span id="floorMeta" class="floor-meta">Loading studio…</span><time id="studioClock" aria-label="Local time"></time></div></header>
       <div class="floor-stage"><canvas id="floor" width="960" height="560" role="img" aria-label="Office studio with agents, workstations, and live OpenCode activity"></canvas></div>
       <div class="floor-footer"><span>One studio · agents follow OpenCode activity</span><strong id="lastSync">Waiting for sync</strong></div>
     </main>

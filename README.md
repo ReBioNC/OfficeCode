@@ -8,6 +8,19 @@ OfficeCode shows [OpenCode](https://opencode.ai/) session activity as a pixel-ar
 
 Three real OpenCode sessions running Frontend, Backend, and QA checks in one studio. Captured in an isolated test workspace.
 
+### Studio atmosphere
+
+The studio follows your browser's local clock automatically. Its windows, floor materials, lighting, and dashboard panels change together:
+
+| Local time | Atmosphere |
+|---|---|
+| 05:00–10:59 | Morning — mint tiles, warm sunrise, soft daylight |
+| 11:00–15:59 | Day — cool blue surfaces, bright sky, subdued lamps |
+| 16:00–18:59 | Evening — amber sunlight, rose tones, warm desk lights |
+| 19:00–04:59 | Night — the original purple studio palette, moonlight, glowing lamps |
+
+The clock checks every 15 seconds while the page is visible and refreshes when you return to the tab. This runs locally in the browser and makes no model calls. Crowded sessions keep stable seats; the planning table has eight places, and extra workstations appear when the main studio fills up.
+
 ## Requirements
 
 - The OpenCode CLI must be installed and the `opencode` command must be available in your terminal. This integration has been tested with OpenCode 1.18.33.

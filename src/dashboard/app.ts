@@ -1,8 +1,10 @@
 import { deskPoint, roomRect, type Rect } from "./layout";
 import { displayWorkRole } from "./work-role";
 import { selectVisibleAgents } from "./live-agents";
+import { allocateStudioSeats, studioGeometry, studioHeight, type OfficeStation, type StudioSeat } from "./studio-seating";
+import { getStudioPeriod, recolorStudioPixels, studioMaterial, STUDIO_THEMES } from "./studio-theme";
 import { advanceTimedRoute, planRoute, type Direction, type Point } from "./agent-motion";
-import { OPS_DESK, STUDIO_DOORS, STUDIO_OBSTACLES, STUDIO_WALLS, WEB_DESK, WORK_DESKS } from "./studio-map";
+import { STUDIO_DOORS, STUDIO_WALLS, WORK_DESKS } from "./studio-map";
 import {
   BOARD_MAP, BOARD_PALETTE, CHAIR_MAP, CHAIR_PALETTE, CHAR_FRAMES,
   COMPUTER_MAP, COMPUTER_PALETTE, DESK_MAP, DESK_PALETTE, INK, PLANT_MAP, PLANT_PALETTE,
@@ -97,6 +99,30 @@ let animationFrame: number | undefined;
 let lastPaint = 0;
 let lastDoorTime = 0;
 const doorOpenness = new Map<string, number>();
+let studioSeats = new Map<string, StudioSeat>();
+let geometry = studioGeometry(studioSeats);
+let studioPeriod = getStudioPeriod(new Date());
+let theme = STUDIO_THEMES[studioPeriod];
+
+function updateStudioClock(): boolean {
+  const date = new Date();
+  const period = getStudioPeriod(date);
+  const changed = period !== studioPeriod;
+  studioPeriod = period;
+  theme = STUDIO_THEMES[period];
+  const root = document.documentElement;
+  root.dataset.period = period;
+  root.style.colorScheme = period === "morning" || period === "day" ? "light" : "dark";
+  for (const [name, value] of Object.entries(theme.ui)) root.style.setProperty(`--${name}`, value);
+  (document.getElementById("studioPeriod") as HTMLElement).textContent = `${theme.label} studio / live feed`;
+  const clock = document.getElementById("studioClock") as HTMLTimeElement;
+  clock.textContent = `${date.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })} · local time`;
+  clock.dateTime = date.toISOString();
+  document.title = `OfficeCode — ${theme.label} Studio`;
+  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", theme.ui.night);
+  if (changed) studioDirty = true;
+  return changed;
+}
 
 function short(value: string, max: number): string {
   const clean = value.replace(/\s+/g, " ").trim();
@@ -129,9 +155,12 @@ function renderConnection(): void {
 }
 
 function renderPanels(): void {
-  studioDirty = true;
   const runById = new Map(runs.map((run) => [run.id, run]));
   const sessions = mirrorOnly ? visibleAgents() : [];
+  studioSeats = allocateStudioSeats(sessions.map((run) => ({ id: run.sessionId ?? run.id, station: stationFor(run) })), studioSeats);
+  const nextGeometry = studioGeometry(studioSeats, occupiedStudioHeight());
+  if (geometry.height !== nextGeometry.height) studioDirty = true;
+  geometry = nextGeometry;
   const focus = sessions[0];
   const roleFor = (run: Run): string => displayWorkRole(run, sessions.length === 1 && focus?.id === run.id);
   (document.getElementById("focusSection") as HTMLElement).hidden = !mirrorOnly;
@@ -163,7 +192,7 @@ function renderPanels(): void {
   (document.getElementById("queueEmpty") as HTMLElement).hidden = queue.length > 0;
   (document.getElementById("lastSync") as HTMLElement).textContent = `Synced ${new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}`;
   const roomSlots = office.rooms.length <= 5 ? office.rooms.length + 1 : office.rooms.length;
-  const floorHeight = mirrorOnly ? 560 : Math.max(560, 124 + Math.ceil(roomSlots / 3) * 218);
+  const floorHeight = mirrorOnly ? geometry.height : Math.max(560, 124 + Math.ceil(roomSlots / 3) * 218);
   if (canvas.height !== floorHeight) canvas.height = floorHeight;
 
   const activityNodes = [...runs].reverse().slice(0, 5).map((run) => {
@@ -306,26 +335,36 @@ function drawStudioShell(): void {
   }
   ctx.fillStyle = "#231f3f";
   ctx.fillRect(34, 104, 892, 421);
-  // Sunset windows and a city silhouette establish the studio setting.
+  // The skyline follows local time; geometry stays identical in every theme.
   for (const wx of [323, 490, 657]) {
     ctx.fillStyle = INK;
     ctx.fillRect(wx, 39, 139, 58);
-    ctx.fillStyle = "#a96a93"; ctx.fillRect(wx + 5, 44, 129, 14);
-    ctx.fillStyle = "#e58a87"; ctx.fillRect(wx + 5, 58, 129, 12);
-    ctx.fillStyle = "#f2b575"; ctx.fillRect(wx + 5, 70, 129, 20);
-    for (let i = 0; i < 14; i++) {
+    ctx.fillStyle = theme.sky[0]; ctx.fillRect(wx + 5, 44, 129, 14);
+    ctx.fillStyle = theme.sky[1]; ctx.fillRect(wx + 5, 58, 129, 12);
+    ctx.fillStyle = theme.sky[2]; ctx.fillRect(wx + 5, 70, 129, 20);
+    if (studioPeriod === "night") {
+      ctx.fillStyle = "#f1e5cf"; ctx.fillRect(wx + 109, 47, 12, 12);
+      ctx.fillStyle = theme.sky[0]; ctx.fillRect(wx + 113, 45, 10, 11);
+    } else {
+      const sunY = studioPeriod === "day" ? 47 : 61;
+      ctx.fillStyle = studioPeriod === "day" ? "#fff7d6" : "#ffe2a4";
+      ctx.fillRect(wx + 101, sunY, 15, 15); ctx.fillRect(wx + 98, sunY + 3, 21, 9);
+      ctx.fillStyle = "#eef8ed";
+      ctx.fillRect(wx + 18, 52, 26, 4); ctx.fillRect(wx + 25, 49, 14, 4);
+    }
+    for (let i = 0; studioPeriod === "night" && i < 14; i++) {
       const px = wx + 9 + (i * 37) % 118;
       const py = 48 + (i * 17) % 34;
-      ctx.fillStyle = i % 3 === 0 ? "#ffd4ad" : "#f6bca8";
+      ctx.fillStyle = i % 3 === 0 ? "#e2dbff" : "#b6c8ea";
       ctx.fillRect(px, py, i % 4 === 0 ? 5 : 2, 2);
     }
-    ctx.fillStyle = "#343358";
+    ctx.fillStyle = theme.skyline;
     for (let i = 0; i < 7; i++) {
       const height = 8 + ((i * 13 + wx) % 18);
       ctx.fillRect(wx + 6 + i * 19, 90 - height, 16, height);
-      ctx.fillStyle = "#ffd28b";
+      ctx.fillStyle = studioPeriod === "night" || studioPeriod === "evening" ? "#ffd28b" : "#cde0df";
       ctx.fillRect(wx + 11 + i * 19, 86 - height / 2, 3, 3);
-      ctx.fillStyle = "#343358";
+      ctx.fillStyle = theme.skyline;
     }
     ctx.fillStyle = "#d7b4b5";
     ctx.fillRect(wx + 70, 43, 4, 49);
@@ -333,16 +372,12 @@ function drawStudioShell(): void {
     ctx.fillStyle = "#261f3b"; ctx.fillRect(wx - 3, 97, 145, 5);
     ctx.fillStyle = "#bd839e"; ctx.fillRect(wx + 6, 97, 127, 2);
   }
-  plate("OFFICECODE / NIGHT STUDIO", 48, 52, "#f8be6a");
-  textOnCanvas("LIVE / 01", 842, 52, "#f5d8cb", 11);
+  plate(`OFFICECODE / ${theme.label.toUpperCase()} STUDIO`, 48, 52, "#f8be6a");
+  textOnCanvas("LIVE / 01", 842, 52, theme.ui.ink, 11);
   ctx.fillStyle = "#15172f"; ctx.fillRect(31, 101, 898, 6);
   ctx.fillStyle = "#f8be6a"; ctx.fillRect(31, 101, 898, 2);
   ctx.fillStyle = "#30345d"; ctx.fillRect(34, 107, 892, 415);
   drawStudioFloorTexture();
-  ctx.globalAlpha = .06;
-  ctx.fillStyle = "#f8be6a";
-  for (const wx of [323, 490, 657]) ctx.fillRect(wx + 19, 107, 98, 108);
-  ctx.globalAlpha = 1;
   ctx.fillStyle = "#191b38"; ctx.fillRect(30, 523, 900, 7);
   ctx.fillStyle = "#f18f89"; ctx.fillRect(30, 523, 900, 2);
 }
@@ -531,10 +566,6 @@ function drawLounge(): void {
   }
 }
 
-type OfficeStation = "reading" | "editing" | "web-search" | "terminal" | "thinking" | "delegating" | "approval" | "lounge";
-
-const PLANNING_CHAIRS = [339, 445, 392, 498];
-
 function stationFor(run: Run): OfficeStation {
   if (run.state === "done") return "lounge";
   if (run.state === "blocked") return "approval";
@@ -564,6 +595,10 @@ function officeDesk(x: number, y: number, active = false, tick = 0): void {
 }
 
 function drawRug(x: number, y: number, w: number, h: number, edge: string, fill: string): void {
+  // Resolve colors before translucent weave marks are composited; otherwise
+  // those blended pixels retain the old night hue in the daylight themes.
+  edge = studioMaterial(edge, studioPeriod);
+  fill = studioMaterial(fill, studioPeriod);
   ctx.fillStyle = "#1b1c38"; ctx.fillRect(x + 6, y + 8, w, h);
   ctx.fillStyle = edge; ctx.fillRect(x, y, w, h);
   ctx.fillStyle = fill; ctx.fillRect(x + 6, y + 6, w - 12, h - 12);
@@ -609,9 +644,6 @@ function drawLamp(x: number, y: number, tick: number): void {
   ctx.fillStyle = "#c48c9b"; ctx.fillRect(x + 11, y, 4, 11);
   ctx.fillStyle = INK; ctx.fillRect(x + 2, y + 10, 22, 6);
   ctx.fillStyle = "#f8be6a"; ctx.fillRect(x + 6, y + 16, 14, 5);
-  ctx.globalAlpha = tick % 2 === 0 ? .13 : .09;
-  ctx.fillStyle = "#f8be6a"; ctx.fillRect(x - 8, y + 22, 42, 43);
-  ctx.globalAlpha = 1;
 }
 
 function drawOfficeFurniture(tick: number, active: Set<OfficeStation>, editingCount: number): void {
@@ -622,7 +654,6 @@ function drawOfficeFurniture(tick: number, active: Set<OfficeStation>, editingCo
   drawRug(49, 300, 542, 212, "#6869a4", "#343660");
   drawRug(611, 300, 303, 212, "#dd917c", "#493c60");
   plate("IDEA POD", 59, 131, "#f2a1aa");
-  plate("PLANNING ATELIER", 302, 131, "#cbb5f1");
   plate("DIGITAL LIBRARY", 618, 131, "#86e5d4");
   plate("WORKSTATIONS", 59, 307, "#aca9e0");
   plate("OPS / COFFEE", 623, 307, "#f8bd91");
@@ -744,39 +775,17 @@ function drawStudioDoors(now: number): void {
   }
 }
 
-function drawWorkRoleBadge(role: string, x: number, y: number, scale: number, color: string): void {
-  const caption = short(role.toUpperCase(), 14);
-  ctx.font = 'bold 10px "Courier New", monospace';
+function drawWorkRoleBadge(role: string, x: number, y: number, scale: number, color: string, compact = false): void {
+  const caption = short(role.toUpperCase(), compact ? 6 : 14);
+  const fontSize = compact ? 8 : 10;
+  ctx.font = `bold ${fontSize}px "Courier New", monospace`;
   const width = Math.ceil(ctx.measureText(caption).width) + 16;
   const left = snap(Math.max(42, Math.min(x + 6 * scale - width / 2, 918 - width)));
-  const top = snap(Math.min(500, y + 14 * scale + 2));
+  const top = snap(Math.min(canvas.height - 34, y + 14 * scale + 2));
   ctx.fillStyle = "#13152d"; ctx.fillRect(left + 2, top + 2, width, 17);
   ctx.fillStyle = "#2b2b4d"; ctx.fillRect(left, top, width, 17);
   ctx.fillStyle = color; ctx.fillRect(left, top, 4, 17);
-  textOnCanvas(caption, left + 9, top + 3, COLORS.light, 10);
-}
-
-function seatedStation(station: OfficeStation): boolean {
-  return station === "editing" || station === "web-search" || station === "terminal"
-    || station === "thinking" || station === "delegating";
-}
-
-function takeComputerDesk(station: OfficeStation, used: Set<string>): readonly [number, number] {
-  const desks = station === "web-search" ? [WEB_DESK, ...WORK_DESKS, OPS_DESK]
-    : station === "terminal" ? [OPS_DESK, ...WORK_DESKS, WEB_DESK]
-      : [...WORK_DESKS, WEB_DESK, OPS_DESK];
-  const desk = desks.find(([x, y]) => !used.has(`${x},${y}`)) ?? desks[0];
-  used.add(`${desk[0]},${desk[1]}`);
-  return desk;
-}
-
-function stationTarget(station: OfficeStation, slot: number): Point {
-  if (station === "thinking" || station === "delegating") {
-    return { x: PLANNING_CHAIRS[slot % PLANNING_CHAIRS.length] - 1, y: 230 };
-  }
-  if (station === "reading") return { x: 680 - slot * 48, y: 220 };
-  if (station === "approval") return { x: 615 + slot * 46, y: 385 };
-  return { x: 660 + slot * 46, y: 387 };
+  textOnCanvas(caption, left + 9, top + 3, COLORS.light, fontSize);
 }
 
 function drawOccupiedChair(x: number, y: number, scale: number, front: boolean): void {
@@ -796,8 +805,6 @@ function drawOccupiedChair(x: number, y: number, scale: number, front: boolean):
 }
 
 function drawOfficeAgents(sessions: Run[], tick: number, now: number): void {
-  const stationOccupancy = new Map<OfficeStation, number>();
-  const usedComputerDesks = new Set<string>();
   const visibleIds = new Set(sessions.map((run) => run.sessionId ?? run.id));
   for (const id of agentPositions.keys()) if (!visibleIds.has(id)) agentPositions.delete(id);
   const planningCount = sessions.filter((run) => ["thinking", "delegating"].includes(stationFor(run))).length;
@@ -805,31 +812,27 @@ function drawOfficeAgents(sessions: Run[], tick: number, now: number): void {
     ctx.fillStyle = tick % 2 === 0 ? "#f8be6a" : "#cbb5f1";
     for (let dot = 0; dot < 3; dot++) ctx.fillRect(415 + dot * 12, 210 + (dot === tick % 3 ? -4 : 0), 5, 5);
   }
-  for (const run of sessions) {
+  for (const run of [...sessions].sort((a, b) => (agentPositions.get(a.sessionId ?? a.id)?.point.y ?? studioSeats.get(a.sessionId ?? a.id)?.point.y ?? 0)
+    - (agentPositions.get(b.sessionId ?? b.id)?.point.y ?? studioSeats.get(b.sessionId ?? b.id)?.point.y ?? 0))) {
     const station = stationFor(run);
-    const occupancyKey = station === "thinking" || station === "delegating" ? "thinking" : station;
-    const slot = stationOccupancy.get(occupancyKey) ?? 0;
-    stationOccupancy.set(occupancyKey, slot + 1);
-    const scale = station === "thinking" || station === "delegating" ? 3 : sessions.length <= 2 ? 4 : 3;
-    const computer = station === "editing" || station === "web-search" || station === "terminal"
-      ? takeComputerDesk(station, usedComputerDesks) : undefined;
-    const target = computer
-      ? { x: computer[0] + (scale === 4 ? 5 : 9), y: computer[1] + 35 }
-      : stationTarget(station, slot);
+    const scale = 3;
     const id = run.sessionId ?? run.id;
+    const seat = studioSeats.get(id);
+    if (!seat) continue;
+    const computer = seat.computer;
     const prior = agentPositions.get(id);
-    const feet = { x: target.x + 6 * scale, y: target.y + 13 * scale };
+    const feet = seat.point;
     let agent = prior ?? { point: feet, target: feet, route: [], time: now, direction: "south" as Direction };
     if (reducedMotion) agent = { ...agent, point: feet, target: feet, route: [] };
     else if (agent.target.x !== feet.x || agent.target.y !== feet.y) {
-      agent = { ...agent, target: feet, route: planRoute(agent.point, feet, STUDIO_OBSTACLES) ?? [] };
+      agent = { ...agent, target: feet, route: planRoute(agent.point, feet, geometry.obstacles, canvas.height === 560 ? 516 : canvas.height - 24) ?? [] };
     }
     if (agent.route.length) agent = { ...agent, ...advanceTimedRoute(agent.point, agent.route, now - agent.time) };
     agent.time = now;
     agentPositions.set(id, agent);
     const x = snap(agent.point.x - 6 * scale), y = snap(agent.point.y - 13 * scale);
     const arrived = Math.hypot(agent.point.x - feet.x, agent.point.y - feet.y) < 2;
-    const seated = arrived && seatedStation(station);
+    const seated = arrived && seat.seated;
     const activity = activityOf(run);
     const workRole = displayWorkRole(run, sessions.length === 1);
     const palette = agentPalette(workRole, id);
@@ -858,17 +861,67 @@ function drawOfficeAgents(sessions: Run[], tick: number, now: number): void {
       ctx.fillStyle = "#fff7dd";
       for (let dot = 0; dot < 3; dot++) ctx.fillRect(x + 36 + dot * 7, y - 10 - (tick + dot) % 2 * 3, 4, 4);
     }
-    drawAgentBubble(run, x, y, activity.color, slot % 3);
-    drawWorkRoleBadge(workRole, x, y, scale, palette.C);
+    if (sessions.length <= 4) drawAgentBubble(run, x, y, activity.color, 0);
+    else {
+      const mark = ({ thinking: "…", delegating: "↔", reading: "R", editing: "E", "web-search": "W", terminal: ">_", approval: "!", lounge: "·" })[station];
+      ctx.fillStyle = "#242747"; ctx.fillRect(x + 30, y + 5, 21, 16);
+      textOnCanvas(mark, x + 33, y + 7, activity.color, 10);
+    }
+    drawWorkRoleBadge(workRole, x, y, scale, palette.C, sessions.length > 4);
   }
+}
+
+function occupiedStudioHeight(): number {
+  const points = [...agentPositions.entries()].filter(([id]) => studioSeats.has(id)).map(([, agent]) => agent.point.y);
+  const bottom = Math.max(516, ...points);
+  return bottom <= 516 ? 560 : 560 + Math.ceil((bottom - 560) / 130) * 130;
+}
+
+function drawStudioAmbience(): void {
+  ctx.save();
+  // Window light falls in stepped bands so the pixel texture stays visible.
+  ctx.beginPath(); ctx.rect(34, 107, 892, 415); ctx.clip();
+  ctx.fillStyle = theme.daylight;
+  for (const wx of [323, 490, 657]) {
+    for (let band = 0; band < 5; band++) {
+      ctx.globalAlpha = theme.lightStrength * (1 - band * .16);
+      const shift = studioPeriod === "evening" ? -band * 16 : band * 9;
+      ctx.fillRect(wx + 16 + shift, 107 + band * 22, 100, 22);
+    }
+  }
+  // Lamps warm the table at dusk and at night without starting another loop.
+  for (const x of [371, 521]) {
+    for (let ring = 3; ring >= 0; ring--) {
+      ctx.globalAlpha = theme.lampStrength * .22;
+      ctx.fillStyle = "#ffd48c";
+      ctx.fillRect(x - 20 - ring * 8, 149 - ring * 4, 40 + ring * 16, 69 + ring * 8);
+    }
+  }
+  ctx.restore();
 }
 
 function drawSessionFloor(tick: number, now: number): void {
   const sessions = visibleAgents();
+  const desiredHeight = Math.max(studioHeight(studioSeats), occupiedStudioHeight());
+  if (desiredHeight !== geometry.height) {
+    geometry = studioGeometry(studioSeats, desiredHeight);
+    canvas.height = desiredHeight;
+    studioDirty = true;
+  }
   if (studioDirty || !backgroundCtx || studioBackground.width !== canvas.width || studioBackground.height !== canvas.height) {
     drawShell();
     drawOfficeFurniture(0, new Set(), 0);
     drawStudioPartitions();
+    textOnCanvas("PLANNING ATELIER", 324, 114, theme.ui.ink, 10);
+    if (geometry.extraDesks.length) {
+      drawRug(34, 555, 892, canvas.height - 570, "#6869a4", "#343660");
+      plate("TEAM WORKSPACE", 48, 558, "#cbb5f1");
+      for (const [x, y] of geometry.extraDesks) officeDesk(x, y);
+    }
+    const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    recolorStudioPixels(pixels.data, studioPeriod);
+    ctx.putImageData(pixels, 0, 0);
+    drawStudioAmbience();
     studioBackground.width = canvas.width; studioBackground.height = canvas.height;
     backgroundCtx?.drawImage(canvas, 0, 0);
     studioDirty = false;
@@ -885,7 +938,7 @@ function drawSessionFloor(tick: number, now: number): void {
   drawStudioDoors(now);
   drawOfficeAgents(sessions, tick, now);
   const primary = sessions[0];
-  ctx.fillStyle = "#1b1d3b"; ctx.fillRect(42, 530, 610, 16);
+  ctx.fillStyle = "#1b1d3b"; ctx.fillRect(42, 530, 872, 16);
   ctx.fillStyle = activityOf(primary).color; ctx.fillRect(42, 530, 5, 16);
   textOnCanvas(short(primary.prompt || "OpenCode session", 47), 54, 532, COLORS.light, 11);
   const activeCount = sessions.filter((run) => run.state !== "done" && run.state !== "blocked").length;
@@ -935,6 +988,10 @@ function connect(): void {
   source.onerror = () => { streamReady = false; renderConnection(); };
 }
 
+updateStudioClock();
+window.setInterval(() => {
+  if (document.visibilityState === "visible" && updateStudioClock()) draw();
+}, 15_000);
 draw();
 void snapshot();
 connect();
@@ -944,5 +1001,5 @@ document.addEventListener("visibilitychange", () => {
   const now = performance.now();
   for (const agent of agentPositions.values()) agent.time = now;
   lastDoorTime = now;
-  if (document.visibilityState === "visible") draw(now);
+  if (document.visibilityState === "visible") { updateStudioClock(); draw(now); }
 });
