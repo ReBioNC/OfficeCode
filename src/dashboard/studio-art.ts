@@ -68,14 +68,14 @@ export function drawExpandedOffice(ctx: CanvasRenderingContext2D, theme: StudioT
   rect(88,216,234,58,p.edge);rect(83,210,234,58,p.woodDark);
   for(let row=0;row<3;row++){rect(87,214+row*18,226,13,p.edge);for(let i=0,xx=91;xx<305;i++,xx+=10){rect(xx,217+row*18,6,10+i%2*2,[p.woodLight,p.teal,p.glass][i%3]);rect(xx+1,219+row*18,2,2,p.paper);}rect(87,227+row*18,226,3,p.woodLight);}
   art(83,289,60);drawStudioDesk(ctx,...WEB_DESK);plant(295,355);
-  rect(446,202,120,50,p.edge);rect(450,206,112,42,p.paper);
-  for(const [x,y,color] of [[460,216,p.woodLight],[484,216,p.teal],[508,216,p.glass],[460,235,p.glass],[484,235,p.woodLight]] as const)rect(x,y,15,9,color);
-  art(672,204,78);
+  rect(595,164,155,34,p.edge);rect(599,168,147,26,p.paper);
+  for(const [x,y,color] of [[609,175,p.woodLight],[633,175,p.teal],[657,175,p.glass],[690,175,p.glass],[714,175,p.woodLight]] as const)rect(x,y,15,9,color);
+  art(438,278,52);
   for(const x of [513,568,623,678]){chair(x,224);chair(x,337);}
   rect(500,273,236,61,p.edge);rect(504,267,228,61,p.wood);rect(509,272,218,4,p.woodLight);rect(582,286,35,23,p.paper);rect(586,290,22,2,p.glass);rect(638,285,24,17,p.woodDark);rect(642,287,16,11,p.teal);
-  plant(462,360);plant(746,363);art(1120,203,78);plant(892,355);plant(1343,355);
+  plant(462,360);plant(746,363);art(1120,164,78);plant(892,355);plant(1343,355);
   REVIEW_DESKS.forEach(([x,y],i)=>{drawStudioDesk(ctx,x,y);text(`FOCUS-${i+1}`,x-4,y-40,p.label,13);});
-  WORK_DESKS.forEach(([x,y],i)=>{drawStudioDesk(ctx,x,y);text(`DEV-${i+1}`,x-4,y-40,p.label,13);});
+  WORK_DESKS.forEach(([x,y],i)=>{drawStudioDesk(ctx,x,y);text(`DEV-${i+1}`,x+68,y-10,p.label,13);});
   art(693,543,62);plant(85,746);plant(736,752);
   rect(692,627,65,61,p.edge);rect(697,631,55,47,p.glass);rect(704,628,42,12,p.paper);rect(704,648,37,10,p.woodDark);rect(706,650,6,3,p.teal);rect(704,670,42,3,p.paper);
   rug(95,905,367,130);sofa(118,915,143);sofa(292,915,143);table(215,975,116);plant(111,1026);plant(398,1028);

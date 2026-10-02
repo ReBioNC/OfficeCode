@@ -53,6 +53,12 @@ it("gives every lounge wait a reachable circuit with straight collision-safe pat
   }
 });
 
+it("gives waiting agents distinct pause points so a group cannot stack at one stop",()=>{
+  const seats=allocateStudioSeats(Array.from({length:8},(_,i)=>({id:`wait-${i}`,station:"waiting" as const})));
+  const circuits=[...seats.values()].map(waitingStops);
+  for(let stop=0;stop<3;stop++)assert.equal(new Set(circuits.map(points=>`${points[stop].x},${points[stop].y}`)).size,8);
+});
+
 it("pauses at waiting stops instead of repeatedly replanning or walking continuously",()=>{
   const seat=allocateStudioSeats([{id:"waiting",station:"waiting"}]).get("waiting")!;
   const schedule={step:0,pauseUntil:undefined as number|undefined};

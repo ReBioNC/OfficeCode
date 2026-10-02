@@ -110,6 +110,7 @@ let studioDirty = true;
 let animationFrame: number | undefined;
 let lastPaint = 0;
 let lastDoorTime = 0;
+let hiddenAt: number | undefined;
 const doorOpenness = new Map<string, number>();
 let studioSeats = new Map<string, StudioSeat>();
 let geometry = studioGeometry(studioSeats);
@@ -812,6 +813,7 @@ function drawSessionFloor(tick: number, now: number): void {
 }
 
 function draw(now = performance.now()): void {
+  if (document.visibilityState!=="visible") return;
   const tick = reducedMotion ? 0 : Math.floor(now / 240);
   ctx.imageSmoothingEnabled = false;
   ctx.textBaseline = "top";
@@ -869,6 +871,12 @@ document.addEventListener("visibilitychange", () => {
   if (animationFrame !== undefined) window.cancelAnimationFrame(animationFrame);
   animationFrame = undefined;
   const now = performance.now();
+  if (document.visibilityState!=="visible") hiddenAt ??= now;
+  else if (hiddenAt!==undefined) {
+    const paused=Math.max(0,now-hiddenAt);
+    for (const schedule of waitingSchedules.values()) if (schedule.pauseUntil!==undefined) schedule.pauseUntil+=paused;
+    hiddenAt=undefined;
+  }
   for (const agent of agentPositions.values()) agent.time = now;
   lastDoorTime = now;
   if (document.visibilityState === "visible") { updateStudioClock(); draw(now); void snapshot(); }
