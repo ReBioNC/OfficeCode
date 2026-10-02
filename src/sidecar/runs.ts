@@ -5,7 +5,7 @@ import { makeEvent, type RunState } from "../shared/events.js";
 import { appendEvent, nextSeq } from "./ledgers.js";
 import type { OfficeStore } from "./office-store.js";
 import type { Driver } from "./drivers.js";
-import type { ActivityStep } from "../shared/run-history.js";
+import type { ActivityStep, ActiveTool, ToolResult } from "../shared/run-history.js";
 
 export interface RunRecord {
   id: string;
@@ -21,6 +21,7 @@ export interface RunRecord {
   finishedAt?: string;
   timeline?: ActivityStep[];
   historyTruncated?: number;
+  activeTools?: ActiveTool[];
   transcriptPath: string;
   outboxDir: string;
   exitCode: number | null;
@@ -128,7 +129,7 @@ export async function registerMirrorRun(
 export async function mirrorEvent(
   store: OfficeStore,
   sessionId: string,
-  event: { state: RunState; message?: string; prompt?: string; role?: string; activity?: string; detail?: string },
+  event: { state: RunState; message?: string; prompt?: string; role?: string; activity?: string; detail?: string; activeTools?: ActiveTool[]; toolResult?: ToolResult },
 ): Promise<RunRecord> {
   const run = getMirrorRun(sessionId);
   if (!run) throw notFound(sessionId);
@@ -136,6 +137,9 @@ export async function mirrorEvent(
   if (event.role) run.role = event.role.slice(0, 48);
   if (event.activity) run.activity = event.activity;
   if (event.detail !== undefined) run.detail = event.detail.slice(0, 160);
+  if (event.activeTools) run.activeTools = event.activeTools.map((tool) => ({ ...tool }));
+  if (event.toolResult) recordMirrorStep(run, { at: new Date().toISOString(), state: "acting", activity: event.toolResult.activity,
+    detail: event.toolResult.detail, outcome: event.toolResult.outcome, durationMs: event.toolResult.durationMs });
   if (event.message) {
     fs.appendFileSync(run.transcriptPath, `\n[${run.state}→${event.state}] ${event.message}\n`, "utf8");
   }
@@ -155,6 +159,7 @@ export async function finishMirrorRun(
   run.activity = outcome;
   run.detail = outcome === "done" ? "Session complete" : "Session stopped";
   run.finishedAt = new Date().toISOString();
+  run.activeTools = [];
   setState(store, run, outcome, message);
   store.occupants.delete(run.deskId);
   mirrorBySession.delete(sessionId);
@@ -169,11 +174,11 @@ export async function finishMirrorRun(
   return run;
 }
 
-function recordMirrorStep(run: RunRecord): void {
+function recordMirrorStep(run: RunRecord, result?: ActivityStep): void {
   if (!run.timeline) return;
   const previous = run.timeline[run.timeline.length - 1];
-  const step = { at: new Date().toISOString(), state: run.state, activity: run.activity ?? run.state, detail: run.detail ?? "" };
-  if (previous?.state === step.state && previous.activity === step.activity && previous.detail === step.detail) return;
+  const step: ActivityStep = result ?? { at: new Date().toISOString(), state: run.state, activity: run.activity ?? run.state, detail: run.detail ?? "" };
+  if (previous?.state === step.state && previous.activity === step.activity && previous.detail === step.detail && previous.outcome === step.outcome) return;
   run.timeline.push(step);
   if (run.timeline.length > 100) {
     run.timeline.shift(); run.historyTruncated = (run.historyTruncated ?? 0) + 1;

@@ -107,6 +107,9 @@
     .timeline-time { color:var(--muted); }
     .timeline-detail { grid-column:2; color:var(--muted); overflow-wrap:anywhere; }
     #lastEvent { display:block; margin-top:6px; color:var(--muted); font:10px "Courier New",monospace; }
+    .timeline-step[data-outcome="error"] { border-left-color:var(--red); }
+    .timeline-step[data-outcome="completed"] { border-left-color:var(--success); }
+    .tool-list { margin:10px 0 0; padding-left:16px; color:var(--sage); font:10px/1.6 "Courier New",monospace; }
     :focus-visible { outline:3px solid #81e8da; outline-offset:3px; }
     /* Time-of-day colors share one vocabulary across the studio and panels. */
     .floor-status { display:flex; flex-direction:column; align-items:flex-end; gap:6px; }
@@ -160,7 +163,7 @@
       <div class="center-scroll">
         <section id="timelineSection" class="panel-section" aria-labelledby="timelineHeading" hidden><div class="section-heading"><h3 id="timelineHeading">Workflow timeline</h3></div><p id="timelineSummary" class="team-parent"></p><ol id="timelineList" class="timeline-list"></ol></section>
         <section id="teamSection" class="panel-section" aria-labelledby="teamHeading" hidden><div class="section-heading"><h3 id="teamHeading">Delegation</h3><span>Live team</span></div><ul id="teamList" class="team-list"></ul></section>
-        <section id="focusSection" class="panel-section focus-card" aria-labelledby="focusHeading" hidden><div class="section-heading"><h3 id="focusHeading">Current work</h3><span id="focusStation">Standby</span></div><div class="focus-body"><span id="focusRole" class="focus-role">OpenCode agent</span><span id="focusTask" class="focus-task">Waiting for a session</span><span id="focusActivity" class="focus-activity">No activity yet</span><span id="focusDetail" class="focus-detail">Start working on a feature in OpenCode.</span></div></section>
+        <section id="focusSection" class="panel-section focus-card" aria-labelledby="focusHeading" hidden><div class="section-heading"><h3 id="focusHeading">Current work</h3><span id="focusStation">Standby</span></div><div class="focus-body"><span id="focusRole" class="focus-role">OpenCode agent</span><span id="focusTask" class="focus-task">Waiting for a session</span><span id="focusActivity" class="focus-activity">No activity yet</span><span id="focusDetail" class="focus-detail">Start working on a feature in OpenCode.</span><ul id="activeTools" class="tool-list" aria-label="Active tools" hidden></ul></div></section>
         <section class="panel-section" aria-labelledby="activityTitle"><div class="section-heading"><h3 id="activityTitle">Recent activity</h3><span id="activityCount">0 runs</span></div><ul id="runs" class="activity-list" aria-live="polite"><li class="empty">No activity yet. Start a task in OpenCode.</li></ul></section>
         <section class="panel-section" aria-labelledby="queueTitle"><div class="section-heading"><h3 id="queueTitle">Queue</h3><span id="queueCount">0 tasks</span></div><ul id="queue" class="queue-list" aria-live="polite"></ul><p id="queueEmpty" class="empty">No tasks waiting.</p></section>
         <section class="panel-section guide" aria-labelledby="guideTitle"><div class="section-heading"><h3 id="guideTitle">From OpenCode</h3><span>Commands</span></div><p>Find the dashboard URL with <code>/dashboard</code>. Rooms, agents, and activity follow live OpenCode events.</p><div class="command-code"><code>/dashboard</code></div></section>

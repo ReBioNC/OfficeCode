@@ -72,3 +72,4 @@ For troubleshooting, uninstall, API, and development details, see the [full guid
 | `GET /api/health` | `activeLeases` counts connected OpenCode instances; `lastEventAt` is the last run update time. |
 | `POST /api/mirror/session` | Optional `parentSessionId` links an OpenCode subagent to its parent. |
 | `GET /api/runs` | Mirrored runs include `startedAt`, `finishedAt`, and the latest 100 timestamped `timeline` steps. History remains available until the server stops. |
+| `POST /api/mirror/event` | Optional `activeTools` lists concurrent calls; `toolResult` records a completed/failed call with duration. |

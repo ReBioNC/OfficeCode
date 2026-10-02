@@ -36,6 +36,16 @@ async function mirror(p: string, body: unknown): Promise<{ status: number; json:
 }
 
 describe("mirror api", () => {
+  it("validates parallel tool metadata and clears tools on completion", async () => {
+    await mirror("/api/mirror/session", {sessionId:"tool-api",prompt:"Tool metadata"});
+    assert.equal((await mirror("/api/mirror/event",{sessionId:"tool-api",state:"acting",activeTools:[42]})).status,400);
+    assert.equal((await mirror("/api/mirror/event",{sessionId:"tool-api",state:"acting",toolResult:{outcome:"invented"}})).status,400);
+    const tool={id:"call-a",name:"read",activity:"reading",detail:"Reading a.ts"};
+    const update=await mirror("/api/mirror/event",{sessionId:"tool-api",state:"acting",activity:"reading",activeTools:[tool]});
+    assert.deepEqual((update.json["run"] as {activeTools:unknown[]}).activeTools,[tool]);
+    const finished=await mirror("/api/mirror/finish",{sessionId:"tool-api",outcome:"done"});
+    assert.deepEqual((finished.json["run"] as {activeTools:unknown[]}).activeTools,[]);
+  });
   it("keeps timestamped tool history after completion without duplicate idle snapshots", async () => {
     await mirror("/api/mirror/session", { sessionId: "timeline-api", prompt: "Timeline feature" });
     await mirror("/api/mirror/event", { sessionId: "timeline-api", state: "acting", activity: "reading", detail: "Reading app.ts" });

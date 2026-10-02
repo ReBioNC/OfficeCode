@@ -106,7 +106,7 @@ async function findOrStart(workspace) {
 
 function sessionIdOf(value) {
   const p = value?.properties ?? value;
-  return p?.sessionID ?? p?.sessionId ?? p?.session_id ?? p?.info?.id ?? p?.id ?? null;
+  return p?.sessionID ?? p?.sessionId ?? p?.session_id ?? p?.part?.sessionID ?? p?.info?.id ?? p?.id ?? null;
 }
 
 function toolActivity(name, args = {}) {
@@ -143,6 +143,34 @@ export const OfficeDashboardPlugin = async ({ client, directory }) => {
   const leaseId = crypto.randomBytes(16).toString("hex");
   const activeSessions = new Set();
   const sessionParents = new Map();
+  const sessionTools = new Map();
+  const awaitingPermission = new Set();
+  let anonymousTool = 0;
+
+  async function publishActivity(sid, extra = {}) {
+    if (!sid || !activeSessions.has(sid)) return;
+    const tools = [...(sessionTools.get(sid)?.values() ?? [])];
+    const latest = tools[tools.length - 1];
+    const waiting = awaitingPermission.has(sid);
+    await post(await ensure(), "/api/mirror/event", {
+      sessionId: sid, state: waiting ? "waiting-approval" : latest ? "acting" : "thinking",
+      activity: waiting ? "approval" : latest?.activity ?? "thinking",
+      detail: waiting ? "Waiting for permission" : latest ? `${latest.detail}${tools.length > 1 ? ` · ${tools.length} tools running` : ""}` : "Reviewing tool results",
+      activeTools: tools.slice(-64).map(({ startedAt, ...tool }) => tool), ...extra,
+    });
+  }
+
+  async function completeTool(input, outcome) {
+    const sid = sessionIdOf(input);
+    if (!sid || !activeSessions.has(sid)) return;
+    const tools = sessionTools.get(sid);
+    const key = typeof input.callID === "string" ? input.callID : [...(tools ?? [])].find(([, tool]) => tool.name === String(input.tool ?? input.name ?? "tool"))?.[0];
+    const tool = tools?.get(key);
+    if (!tool) return;
+    tools.delete(key);
+    const { startedAt, ...info } = tool;
+    await publishActivity(sid, { toolResult: { ...info, outcome, durationMs: Math.max(0, Date.now() - startedAt) } });
+  }
 
   function startHeartbeat() {
     if (heartbeat) return;
@@ -187,12 +215,19 @@ export const OfficeDashboardPlugin = async ({ client, directory }) => {
       url = null;
       registrations.delete(workspace);
       if (lastUrl) await updateLease(lastUrl, leaseId, "DELETE");
+      sessionTools.clear(); awaitingPermission.clear(); sessionParents.clear();
     },
     event: async ({ event }) => {
       if (!event || typeof event.type !== "string") return;
       if (event.type === "server.connected") {
         const current = await ensure();
         await toast(client, current ? `🏢 Office dashboard → ${current} · /dashboard` : "🏢 Office dashboard unavailable · check your Node.js/OfficeCode installation");
+      }
+      if (event.type === "message.part.updated") {
+        const part = event.properties?.part;
+        if (part?.type === "tool" && ["completed", "error"].includes(part.state?.status)) {
+          await completeTool({ sessionID: part.sessionID, callID: part.callID, tool: part.tool }, part.state.status);
+        }
       }
       if (event.type === "session.created") {
         const sid = sessionIdOf(event);
@@ -214,14 +249,13 @@ export const OfficeDashboardPlugin = async ({ client, directory }) => {
         const sid = sessionIdOf(info);
         // Metadata can arrive after idle. Only a prompt hook or busy status starts a new turn.
         if (sid && activeSessions.has(sid) && typeof info.agent === "string") {
-          await post(await ensure(), "/api/mirror/event", { sessionId: sid, state: "thinking", activity: "thinking",
-            role: info.agent, detail: "Planning the next steps" });
+          await publishActivity(sid, { role: info.agent });
         }
       }
       if (event.type === "session.status" && event.properties?.status?.type === "busy") {
         const sid = sessionIdOf(event);
         await beginSession(sid);
-        if (sid) await post(await ensure(), "/api/mirror/event", { sessionId: sid, state: "thinking", activity: "thinking", detail: "Planning the next steps" });
+        await publishActivity(sid);
       }
       if (event.type === "session.idle" || event.type === "session.deleted" || event.type === "session.error"
         || (event.type === "session.status" && event.properties?.status?.type === "idle")) {
@@ -230,20 +264,24 @@ export const OfficeDashboardPlugin = async ({ client, directory }) => {
           await post(await ensure(), "/api/mirror/finish", { sessionId: sid,
             outcome: event.type === "session.error" ? "blocked" : "done" });
           activeSessions.delete(sid);
+          sessionTools.delete(sid); awaitingPermission.delete(sid);
+          if (event.type === "session.deleted") sessionParents.delete(sid);
         }
       }
       if (event.type === "permission.updated" || event.type === "permission.asked") {
         const sid = sessionIdOf(event);
         if (sid) {
           await beginSession(sid);
-          await post(await ensure(), "/api/mirror/event", { sessionId: sid, state: "waiting-approval", activity: "approval", detail: "Waiting for permission", message: "waiting for approval" });
+          awaitingPermission.add(sid);
+          await publishActivity(sid);
         }
       }
       if (event.type === "permission.replied") {
         const sid = sessionIdOf(event);
         if (sid) {
           await beginSession(sid);
-          await post(await ensure(), "/api/mirror/event", { sessionId: sid, state: "thinking", activity: "thinking", detail: "Planning the next steps" });
+          awaitingPermission.delete(sid);
+          await publishActivity(sid);
         }
       }
     },
@@ -251,27 +289,29 @@ export const OfficeDashboardPlugin = async ({ client, directory }) => {
       const sid = sessionIdOf(input);
       if (!sid) return;
       await beginSession(sid);
-      await post(await ensure(), "/api/mirror/event", { sessionId: sid, state: "thinking", activity: "thinking",
-        role: typeof input.agent === "string" ? input.agent : undefined, detail: "Planning the next steps" });
+      await publishActivity(sid, { role: typeof input.agent === "string" ? input.agent : undefined });
     },
     "tool.execute.before": async (input, output) => {
       const sid = sessionIdOf(input);
       if (sid) {
         await beginSession(sid);
         const tool = String(input.tool ?? input.name ?? "tool");
-        await post(await ensure(), "/api/mirror/event", { sessionId: sid, state: "acting", message: tool,
-          ...toolActivity(tool, output?.args) });
+        let tools = sessionTools.get(sid);
+        if (!tools) { tools = new Map(); sessionTools.set(sid, tools); }
+        const id = typeof input.callID === "string" ? input.callID : `anonymous-${++anonymousTool}`;
+        tools.set(id, { id, name: tool, ...toolActivity(tool, output?.args), startedAt: Date.now() });
+        await publishActivity(sid, { message: tool });
       }
     },
-    "tool.execute.after": async (input) => {
-      const sid = sessionIdOf(input);
-      if (sid) await post(await ensure(), "/api/mirror/event", { sessionId: sid, state: "thinking", activity: "thinking", detail: "Reviewing tool results" });
+    "tool.execute.after": async (input, output) => {
+      await completeTool(input, output?.metadata?.error ? "error" : "completed");
     },
     "permission.ask": async (input) => {
       const sid = sessionIdOf(input);
       if (sid) {
         await beginSession(sid);
-        await post(await ensure(), "/api/mirror/event", { sessionId: sid, state: "waiting-approval", activity: "approval", detail: "Waiting for permission", message: "waiting for approval" });
+        awaitingPermission.add(sid);
+        await publishActivity(sid);
       }
     },
   };

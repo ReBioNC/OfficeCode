@@ -50,7 +50,7 @@ console.log("RESULT:" + JSON.stringify({ toasts, runs, occupants, url: dashboard
 
 interface HarnessOut {
   toasts: string[];
-  runs: Array<{ id: string; state: string; deskId: string; role?: string; activity?: string; detail?: string; sessionId?: string; prompt?: string; parentSessionId?: string }>;
+  runs: Array<{ id: string; state: string; deskId: string; role?: string; activity?: string; detail?: string; sessionId?: string; prompt?: string; parentSessionId?: string; activeTools?: { id: string; name: string }[]; timeline?: { outcome?: string }[] }>;
   occupants: Record<string, string>;
   url: string;
   info: { workspace: string; mirrorOnly: boolean; leaseManaged: boolean; pid: number };
@@ -111,6 +111,39 @@ after(async () => {
 });
 
 describe("opencode plugin", () => {
+  it("keeps the remaining tool active when parallel calls finish out of order or busy metadata arrives", async () => {
+    const sid = "plug-parallel-tools";
+    const out = await drive([
+      { call:"tool.execute.before", input:{sessionID:sid,tool:"read",callID:"read-a"}, output:{args:{filePath:"a.ts"}} },
+      { call:"tool.execute.before", input:{sessionID:sid,tool:"edit",callID:"edit-b"}, output:{args:{filePath:"b.ts"}} },
+      { call:"tool.execute.after", input:{sessionID:sid,tool:"read",callID:"read-a"}, output:{metadata:{}} },
+      { call:"event", event:{type:"session.status",properties:{sessionID:sid,status:{type:"busy"}}} },
+    ]);
+    const run = out.runs.find((run)=>run.sessionId===sid);
+    assert.equal(run?.state,"acting");
+    assert.equal(run?.activity,"editing");
+    assert.deepEqual(run?.activeTools?.map((tool)=>tool.id),["edit-b"]);
+    assert.ok(run?.timeline?.some((step)=>step.outcome==="completed"));
+  });
+  it("records failed tools, keeps permission visible, and ignores late tool completion after idle", async () => {
+    const sid = "plug-tool-error";
+    const out = await drive([
+      { call:"tool.execute.before", input:{sessionID:sid,tool:"bash",callID:"cmd-a"} },
+      { call:"tool.execute.before", input:{sessionID:sid,tool:"read",callID:"read-b"} },
+      { call:"event", event:{type:"permission.asked",properties:{sessionID:sid}} },
+      { call:"event", event:{type:"message.part.updated",properties:{part:{type:"tool",sessionID:sid,callID:"cmd-a",tool:"bash",state:{status:"error",error:"command failed"}}}} },
+    ]);
+    const run=out.runs.find((run)=>run.sessionId===sid);
+    assert.equal(run?.state,"waiting-approval");
+    assert.deepEqual(run?.activeTools?.map((tool)=>tool.id),["read-b"]);
+    assert.ok(run?.timeline?.some((step)=>step.outcome==="error"));
+    const late=await drive([
+      { call:"event", event:{type:"session.idle",properties:{sessionID:sid}} },
+      { call:"tool.execute.after", input:{sessionID:sid,tool:"read",callID:"read-b"} },
+    ]);
+    assert.equal(late.runs.find((entry)=>entry.id===run?.id)?.state,"done");
+    assert.ok(!late.runs.some((entry)=>entry.sessionId===sid&&entry.state==="thinking"));
+  });
   it("forwards the parent relationship emitted by OpenCode and retains it for the next turn", async () => {
     const sid = "plug-child";
     const out = await drive([

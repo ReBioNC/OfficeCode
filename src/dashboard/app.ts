@@ -1,7 +1,7 @@
 import { deskPoint, roomRect, type Rect } from "./layout";
 import { displayWorkRole, resolveWorkRole } from "./work-role";
 import { resolveFocus, hitAgent } from "./agent-inspector";
-import { stepDuration, type ActivityStep } from "../shared/run-history";
+import { stepDuration, type ActivityStep, type ActiveTool } from "../shared/run-history";
 import { attachStudioCamera } from "./studio-camera";
 import { connectionStatus } from "./connection-status";
 import { selectVisibleAgents } from "./live-agents";
@@ -22,7 +22,7 @@ interface Room { id: string; name: string; color: string }
 interface Hallway { fromRoomId: string; toRoomId: string; open: boolean }
 interface PlacedObject { id: string; roomId: string; kind: string }
 interface OfficeDoc { building: string; rooms: Room[]; desks: Desk[]; hallways: Hallway[]; objects: PlacedObject[] }
-interface Run { id: string; deskId: string; role: string; state: string; prompt: string; sessionId?: string; parentSessionId?: string; activity?: string; detail?: string; startedAt?: string; finishedAt?: string; timeline?: ActivityStep[]; historyTruncated?: number }
+interface Run { id: string; deskId: string; role: string; state: string; prompt: string; sessionId?: string; parentSessionId?: string; activity?: string; detail?: string; startedAt?: string; finishedAt?: string; timeline?: ActivityStep[]; historyTruncated?: number; activeTools?: ActiveTool[] }
 interface QueueItem { position: number; deskId: string; role: string; prompt: string }
 
 const COLORS = {
@@ -201,7 +201,8 @@ function renderPanels(): void {
     const time = element("time", "timeline-time", new Date(step.at).toLocaleTimeString("en-GB"));
     time.dateTime = step.at;
     const duration = stepDuration(step, shown[index + 1]?.at ?? focus?.finishedAt);
-    item.append(time, element("strong", "", `${ACTIVITY[step.activity]?.label ?? label(step.state)} · ${duration}`), element("span", "timeline-detail", step.detail));
+    item.dataset.outcome = step.outcome ?? "";
+    item.append(time, element("strong", "", `${ACTIVITY[step.activity]?.label ?? label(step.state)}${step.outcome ? ` · ${step.outcome}` : ""} · ${duration}`), element("span", "timeline-detail", step.detail));
     return item;
   }));
   if (!steps.length) timeline.append(element("li", "empty", "Select an agent to inspect its workflow."));
@@ -235,6 +236,9 @@ function renderPanels(): void {
     (document.getElementById("focusTask") as HTMLElement).textContent = focus?.prompt || "Waiting for a session";
     (document.getElementById("focusActivity") as HTMLElement).textContent = focus ? activityOf(focus).label : "No activity yet";
     (document.getElementById("focusDetail") as HTMLElement).textContent = focus?.detail || "Start working on a feature in OpenCode.";
+    const tools = document.getElementById("activeTools") as HTMLElement;
+    tools.replaceChildren(...(focus?.activeTools ?? []).map((tool) => element("li", "tool-item", `${tool.name} · ${tool.detail}`)));
+    tools.hidden = !focus?.activeTools?.length;
     const activeModes = new Set(sessions.map((run) => {
       if (run.activity === "code-search") return "reading";
       if (run.activity === "working") return "editing";
@@ -242,6 +246,7 @@ function renderPanels(): void {
       if (run.activity === "approval") return "approval";
       return run.activity;
     }));
+    for (const run of sessions) for (const tool of run.activeTools ?? []) activeModes.add(tool.activity === "code-search" ? "reading" : tool.activity === "delegating" ? "thinking" : tool.activity);
     document.querySelectorAll<HTMLElement>(".activity-chip").forEach((chip) => {
       chip.dataset.active = activeModes.has(chip.dataset.activity) ? "true" : "false";
     });

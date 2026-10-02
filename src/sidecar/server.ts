@@ -11,6 +11,7 @@ import { RUN_STATES, type RunState } from "../shared/events.js";
 import { enqueueOrRun, pendingList, pumpQueue } from "./queue.js";
 import { loadBudgets, saveBudgets, spentToday, overBudget, settleSpend, type BudgetsDoc } from "./budgets.js";
 import { loadModels as loadModelSlots } from "./models.js";
+import type { ActiveTool, ToolResult } from "../shared/run-history.js";
 
 const PUBLIC_DIR = path.join(process.env["OFFICECODE_ROOT"] ?? path.resolve(__dirname, "..", "..", ".."), "dashboard", "public");
 
@@ -30,6 +31,12 @@ function contentType(file: string): string {
   if (file.endsWith(".js")) return "text/javascript; charset=utf-8";
   if (file.endsWith(".css")) return "text/css; charset=utf-8";
   return "application/octet-stream";
+}
+
+function validTool(value: unknown): value is ActiveTool {
+  if (!value || typeof value !== "object") return false;
+  const tool = value as Record<string, unknown>;
+  return (["id", "name", "activity", "detail"] as const).every((key) => typeof tool[key] === "string" && (tool[key] as string).length <= 200);
 }
 
 export async function startServer(workspaceDir: string, port: number, options: { lease?: LeaseOptions } = {}): Promise<{
@@ -243,6 +250,7 @@ export async function startServer(workspaceDir: string, port: number, options: {
             const input = JSON.parse(body) as {
               sessionId?: string; role?: string; prompt?: string; parentSessionId?: string;
               state?: string; message?: string; outcome?: string; activity?: string; detail?: string;
+              activeTools?: ActiveTool[]; toolResult?: ToolResult;
             };
             if (!input.sessionId) {
               sendJson(res, 400, { error: "sessionId required" });
@@ -263,6 +271,13 @@ export async function startServer(workspaceDir: string, port: number, options: {
               return;
             }
             if (url.pathname === "/api/mirror/event") {
+              if (input.activeTools !== undefined && (!Array.isArray(input.activeTools) || input.activeTools.length > 64 || !input.activeTools.every(validTool))) {
+                sendJson(res, 400, { error: "invalid activeTools" }); return;
+              }
+              if (input.toolResult !== undefined && (!validTool(input.toolResult) || !["completed", "error"].includes(input.toolResult.outcome)
+                || (input.toolResult.durationMs !== undefined && (!Number.isFinite(input.toolResult.durationMs) || input.toolResult.durationMs < 0)))) {
+                sendJson(res, 400, { error: "invalid toolResult" }); return;
+              }
               if (!input.state || !(RUN_STATES as readonly string[]).includes(input.state) || input.state === "off-duty") {
                 sendJson(res, 400, { error: `state must be one of: ${(RUN_STATES as readonly string[]).filter((s) => s !== "off-duty").join(", ")}` });
                 return;
@@ -274,6 +289,8 @@ export async function startServer(workspaceDir: string, port: number, options: {
                 role: input.role,
                 activity: input.activity,
                 detail: input.detail,
+                activeTools: input.activeTools,
+                toolResult: input.toolResult,
               });
               broadcast({ runId: run.id, state: run.state });
               sendJson(res, 200, { run });
