@@ -50,11 +50,11 @@
 
 ### Task 3: Guide and final verification
 
-**Files:** docs/GUIDE.md, docs/assets/studio-preview.png, plan completion checkboxes.
+**Files:** README.md, docs/GUIDE.md, docs/assets/studio-preview.png, plan completion checkboxes.
 
-- [ ] Document room meanings and actual waiting signals; refresh public sample preview.
-- [ ] Verify desktop/mobile, clock themes, optional relations, reduced motion, 32-agent overflow and completion removal.
-- [ ] Commit `docs: explain expanded office and refresh studio preview`.
+- [x] Document room meanings and actual waiting signals; refresh public sample preview.
+- [x] Verify desktop/mobile, clock themes, optional relations, reduced motion, 48-agent overflow and completion removal.
+- [x] Commit `docs: explain expanded office and refresh studio preview`.
 
 ## Execution notes
 
@@ -64,3 +64,7 @@ Task 1 verification: npm run build and npm test passed (121 tests). Isolated bro
 
 Task 2 verification: npm run build and npm test passed (126 tests). Browser RED observed Coordinating instead of Waiting for Backend; GREEN verified API-to-browser waiting, permissions including concurrent local reads, child completion and character removal. A controlled-clock browser verified actual lobby entry, lounge wandering with pauses, collision-safe feet and interruption when editing resumes.
 Ruling: no server or plugin changes; existing activeTools and parentSessionId provide the real dependency signal. Single generic agents keep Fullstack as their display role while audit task hints can select the focus room.
+
+Review fixes: independent review found overlapping waiting pause destinations and hidden-tab SSE redraws. Distinct per-seat circuits and a hidden draw guard address both; resume preserves remaining waiting pauses. Regression tests observed failures before the fixes and passed afterward. Artwork adjustments keep planning boards and desk labels clear of seated agents. Focused re-review approved the fixes.
+
+Final verification: build and full npm test passed (127 tests). Isolated browser checks passed for real dependency signals, permission priority, child completion, lobby entry, collision-safe wandering and editing interruption. Desktop and mobile previews passed, including touch pinch, four distinct clock palettes, default-hidden relations after reload, 48-agent overflow fit and complete character removal. The README preview uses six sample mirror sessions without model calls. Installed global plugin source matches this checkout and its configured root; runtime and dashboard builds exist.
