@@ -1,6 +1,6 @@
 import { deskPoint, roomRect, type Rect } from "./layout";
 import { displayWorkRole, resolveWorkRole } from "./work-role";
-import { resolveFocus, hitAgent } from "./agent-inspector";
+import { resolveFocus, hitAgent, delegationRows } from "./agent-inspector";
 import { stepDuration, type ActivityStep, type ActiveTool } from "../shared/run-history";
 import { attachStudioCamera } from "./studio-camera";
 import { connectionStatus } from "./connection-status";
@@ -181,11 +181,13 @@ function renderConnection(): void {
     managed: healthInfo.leaseManaged === true, leases: healthInfo.activeLeases ?? 0, active: visibleAgents().length, attempted: healthAttempted });
   connection.dataset.state = status.state;
   connection.textContent = status.text;
+  canvas.dataset.sync = status.state;
   const lastEvent = document.getElementById("lastEvent") as HTMLElement;
   lastEvent.textContent = healthInfo.lastEventAt ? `Last event ${new Date(healthInfo.lastEventAt).toLocaleTimeString("en-GB")}` : "No activity received yet";
 }
 
 function renderPanels(): void {
+  const focusedKey = (document.activeElement as HTMLElement | null)?.dataset.focusKey;
   const runById = new Map(runs.map((run) => [run.id, run]));
   const sessions = mirrorOnly ? visibleAgents() : [];
   studioSeats = allocateStudioSeats(sessions.map((run) => ({ id: run.sessionId ?? run.id, station: stationFor(run) })), studioSeats);
@@ -193,6 +195,7 @@ function renderPanels(): void {
   if (geometry.height !== nextGeometry.height) studioDirty = true;
   geometry = nextGeometry;
   const focus = resolveFocus(runs, sessions, selectedRunId);
+  (document.getElementById("zoomFocus") as HTMLButtonElement).disabled = !focus || !sessions.some((run) => run.id === focus.id);
   (document.getElementById("timelineSection") as HTMLElement).hidden = !mirrorOnly;
   const steps = focus?.timeline ?? [];
   const timeline = document.getElementById("timelineList") as HTMLElement;
@@ -212,11 +215,13 @@ function renderPanels(): void {
   (document.getElementById("teamSection") as HTMLElement).hidden = !mirrorOnly;
   const teamList = document.getElementById("teamList") as HTMLElement;
   const latestSessions = new Map(runs.filter((run) => run.sessionId).map((run) => [run.sessionId, run]));
-  teamList.replaceChildren(...sessions.map((run) => {
+  teamList.replaceChildren(...delegationRows(sessions).map(({run,depth}) => {
     const parent = latestSessions.get(run.parentSessionId);
     const item = element("li", "team-item");
+    item.style.marginLeft = `${Math.min(depth, 6) * 12}px`;
     const choose = element("button", "team-select", `${run.parentSessionId ? "↳ " : "● "}${roleFor(run)} · ${short(run.prompt, 40)}`);
     choose.type = "button";
+    choose.dataset.focusKey = `team:${run.id}`;
     choose.onclick = () => selectAgent(run.id);
     item.append(choose, element("span", "team-parent", run.parentSessionId
       ? `Delegated by ${parent ? `${displayWorkRole(parent, false)} · ${short(parent.prompt, 32)}` : "parent session (not on this floor)"}`
@@ -274,6 +279,7 @@ function renderPanels(): void {
     if (mirrorOnly) {
       const inspect = element("button", "inspect-button", "Inspect agent");
       inspect.type = "button";
+      inspect.dataset.focusKey = `history:${run.id}`;
       inspect.setAttribute("aria-pressed", String(focus?.id === run.id));
       inspect.onclick = () => selectAgent(run.id);
       item.append(inspect);
@@ -308,6 +314,7 @@ function renderPanels(): void {
         element("span", "crew-status", activityOf(run).label));
       const choose = element("button", "crew-select");
       choose.type = "button";
+      choose.dataset.focusKey = `crew:${run.id}`;
       choose.setAttribute("aria-label", `Inspect ${workRole}: ${run.prompt}`);
       choose.setAttribute("aria-pressed", String(focus?.id === run.id));
       choose.onclick = () => selectAgent(run.id);
@@ -340,6 +347,12 @@ function renderPanels(): void {
     card.append(avatar, copy);
     return card;
   }));
+  if (focusedKey) {
+    const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>("[data-focus-key]"));
+    const nextFocus = buttons.find((node) => node.dataset.focusKey === focusedKey)
+      ?? buttons.find((node) => node.dataset.focusKey === focusedKey.replace(/^crew:/, "history:"));
+    nextFocus?.focus({preventScroll:true});
+  }
 }
 
 async function fetchJson<T>(path: string): Promise<T> {
@@ -1071,6 +1084,7 @@ function draw(now = performance.now()): void {
 
 function scheduleAnimation(): void {
   if (reducedMotion || animationFrame !== undefined || document.visibilityState !== "visible") return;
+  if (mirrorOnly && (!streamReady || !latestFetchOkay || (healthInfo.leaseManaged && !healthInfo.activeLeases))) return;
   const active = mirrorOnly ? visibleAgents().length > 0 : runs.some((run) => run.state === "walking" || run.state === "delivering");
   if (!active) return;
   animationFrame = window.requestAnimationFrame((now) => {

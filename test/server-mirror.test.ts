@@ -36,6 +36,16 @@ async function mirror(p: string, body: unknown): Promise<{ status: number; json:
 }
 
 describe("mirror api", () => {
+  it("bounds long workflows while retaining the newest actions and completion", async () => {
+    await mirror("/api/mirror/session",{sessionId:"long-workflow",prompt:"Long workflow"});
+    for (let i=0;i<105;i++) await mirror("/api/mirror/event",{sessionId:"long-workflow",state:"acting",activity:"reading",detail:`Reading file ${i}`});
+    const result=await mirror("/api/mirror/finish",{sessionId:"long-workflow",outcome:"done"});
+    const run=result.json["run"] as {timeline:{detail:string;activity:string}[];historyTruncated:number};
+    assert.equal(run.timeline.length,100);
+    assert.equal(run.historyTruncated,7);
+    assert.equal(run.timeline[0].detail,"Reading file 6");
+    assert.equal(run.timeline[99].activity,"done");
+  });
   it("validates parallel tool metadata and clears tools on completion", async () => {
     await mirror("/api/mirror/session", {sessionId:"tool-api",prompt:"Tool metadata"});
     assert.equal((await mirror("/api/mirror/event",{sessionId:"tool-api",state:"acting",activeTools:[42]})).status,400);

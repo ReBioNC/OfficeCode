@@ -1,6 +1,6 @@
 import { it } from "node:test";
 import assert from "node:assert/strict";
-import { resolveFocus, hitAgent } from "../src/dashboard/agent-inspector.js";
+import { resolveFocus, hitAgent, delegationRows } from "../src/dashboard/agent-inspector.js";
 import { stepDuration } from "../src/shared/run-history.js";
 
 it("computes elapsed workflow time against the next event or completion", () => {
@@ -22,4 +22,11 @@ it("selects the frontmost character under the pointer, leaving empty space unsel
   const positions = [{ id: "back", x: 100, y: 100 }, { id: "front", x: 100, y: 110 }];
   assert.equal(hitAgent(positions, 100, 95), "front");
   assert.equal(hitAgent(positions, 300, 95), undefined);
+});
+
+it("orders nested delegations parent first and safely handles missing parents or cycles", () => {
+  const runs = [{sessionId:"grandchild",parentSessionId:"child"},{sessionId:"child",parentSessionId:"root"},{sessionId:"root"}];
+  assert.deepEqual(delegationRows(runs).map(({run,depth})=>[run.sessionId,depth]),[["root",0],["child",1],["grandchild",2]]);
+  assert.equal(delegationRows([{sessionId:"orphan",parentSessionId:"missing"}])[0].depth,1);
+  assert.equal(delegationRows([{sessionId:"a",parentSessionId:"b"},{sessionId:"b",parentSessionId:"a"}]).length,2);
 });
