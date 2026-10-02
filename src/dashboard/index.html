@@ -9,7 +9,13 @@
     :root { color-scheme: dark; --ink:#fff1df; --night:#0b0e20; --paper:#1c1e3b; --light:#292b4e; --line:#434361; --muted:#adaac6; --sage:#67dccb; --red:#ff827d; --accent:#f8be6a; --panel:#242542; --frame:#8c5d88; --stage-glow:#292444; --avatar:#414266; --success:#9ae2b0; --active-bg:#664460; font-family:"Trebuchet MS",Arial,sans-serif; }
     * { box-sizing:border-box; }
     body { margin:0; min-width:320px; background:var(--night); color:var(--ink); }
-    .app { display:grid; grid-template-columns:minmax(0,1.78fr) minmax(350px,.98fr); grid-template-rows:minmax(0,1fr) 126px; height:100dvh; min-height:620px; overflow:hidden; }
+    .app { display:grid; grid-template-columns:minmax(0,1fr) 10px var(--activity-width,32vw); grid-template-rows:minmax(0,1fr) 126px; height:100dvh; min-height:620px; overflow:hidden; }
+    .app.activity-collapsed { grid-template-columns:minmax(0,1fr) 0 0; }
+    .activity-divider { position:relative; min-height:0; background:var(--night); border:1px solid var(--frame); border-top:0; border-bottom:0; cursor:col-resize; touch-action:none; }
+    .activity-divider::after { content:""; position:absolute; top:50%; left:2px; width:4px; height:38px; transform:translateY(-50%); background:var(--frame); box-shadow:0 -6px var(--line),0 6px var(--line); }
+    .activity-divider:hover::after,.activity-divider:focus-visible::after { background:var(--sage); }
+    .activity-divider[hidden],.command-center[hidden] { display:none; }
+    .resizing-layout,.resizing-layout * { cursor:col-resize !important; user-select:none !important; }
     .floor-panel { min-width:0; min-height:0; display:flex; flex-direction:column; background:var(--night); }
     .floor-header { display:flex; align-items:center; justify-content:space-between; gap:16px; min-height:70px; padding:13px 24px; color:var(--ink); border-bottom:1px solid #403954; }
     .eyebrow,.floor-meta,.metric-label,.run-state,.queue-number,.crew-meta { font:700 10px "Courier New",monospace; letter-spacing:.08em; text-transform:uppercase; }
@@ -28,7 +34,7 @@
     details.panel-section summary { cursor:pointer; }
     .floor-footer { display:flex; align-items:center; justify-content:space-between; gap:12px; min-height:40px; padding:0 24px; color:#bcb7d4; border-top:1px solid #403954; font:11px "Courier New",monospace; }
     .floor-footer strong { color:var(--accent); }
-    .command-center { display:flex; flex-direction:column; min-width:0; min-height:0; background:var(--paper); border-left:4px solid #8c5d88; box-shadow:inset 1px 0 #0b0e20; }
+    .command-center { display:flex; flex-direction:column; min-width:0; min-height:0; container:activity / inline-size; background:var(--paper); border-left:4px solid #8c5d88; box-shadow:inset 1px 0 #0b0e20; }
     .command-header { padding:18px 20px 16px; border-bottom:1px solid var(--line); background:#242542; }
     .command-title { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
     .command-title h2 { margin:0 0 6px; font-size:19px; line-height:1; letter-spacing:-.05em; }
@@ -49,6 +55,7 @@
     .metric-value { display:block; font:700 23px "Courier New",monospace; line-height:1; overflow-wrap:anywhere; }
     .metric-value.money { font-size:17px; }
     .metric-unit { display:block; margin-top:5px; color:var(--muted); font:10px "Courier New",monospace; }
+    @container activity (max-width:360px) { .metric { padding:12px 8px; } .metric-value.money { font-size:15px; } }
     .center-scroll { min-height:0; flex:1; overflow-y:auto; scrollbar-color:#696482 transparent; }
     .panel-section { padding:16px 20px; border-bottom:1px solid var(--line); }
     .section-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:11px; }
@@ -155,11 +162,12 @@
   <div class="app">
     <main class="floor-panel" aria-label="Live office floor">
       <header class="floor-header"><div><p id="studioPeriod" class="eyebrow">Studio / live feed</p><h1>Office<span>Code</span> Studio</h1></div><div class="floor-status"><span id="floorMeta" class="floor-meta">Loading studio…</span><time id="studioClock" aria-label="Local time"></time></div></header>
-      <div class="studio-toolbar" role="group" aria-label="Studio view controls"><button id="zoomOut" type="button" aria-label="Zoom out">−</button><span id="zoomValue" aria-live="polite">100%</span><button id="zoomIn" type="button" aria-label="Zoom in">+</button><button id="zoomFit" type="button">Fit studio</button><button id="zoomFocus" type="button">Focus agent</button><button id="toggleRelations" type="button" aria-pressed="false" hidden>Show relations</button><span>Drag to pan · pinch to zoom</span></div>
+      <div class="studio-toolbar" role="group" aria-label="Studio view controls"><button id="zoomOut" type="button" aria-label="Zoom out">−</button><span id="zoomValue" aria-live="polite">100%</span><button id="zoomIn" type="button" aria-label="Zoom in">+</button><button id="zoomFit" type="button">Fit studio</button><button id="zoomFocus" type="button">Focus agent</button><button id="toggleRelations" type="button" aria-pressed="false" hidden>Show relations</button><button id="toggleActivity" type="button" aria-controls="activityCenter" aria-expanded="true">Hide activity</button><button id="resetLayout" type="button">Reset layout</button><span>Drag to pan · pinch to zoom</span></div>
       <div class="floor-stage"><canvas id="floor" width="960" height="560" role="img" aria-label="Office with a lobby, library, planning room, workstations, focus room and waiting lounge showing live OpenCode activity"></canvas></div>
       <div class="floor-footer"><span>Connected rooms · agents follow OpenCode activity</span><strong id="lastSync">Waiting for sync</strong></div>
     </main>
-    <aside class="command-center" aria-label="Office information center">
+    <div id="activityDivider" class="activity-divider" role="separator" tabindex="0" aria-label="Resize activity center" aria-orientation="vertical" aria-controls="activityCenter" aria-valuemin="280" aria-valuemax="864" aria-valuenow="461" title="Drag or use arrow keys to resize. Double-click to reset."></div>
+    <aside id="activityCenter" class="command-center" aria-label="Office information center">
       <header class="command-header"><div class="command-title"><div><h2>Activity center</h2><p class="command-subtitle">Follow agent workflows in the studio.</p></div><span class="view-tag">LIVE</span></div><span id="connection" class="connection" data-state="offline" role="status">Connecting…</span><span id="lastEvent">No activity received yet</span></header>
       <div id="activityTracker" class="activity-tracker" aria-label="Current agent activity" hidden><span class="activity-chip" data-activity="thinking">◌ THINK</span><span class="activity-chip" data-activity="reading">▤ READ</span><span class="activity-chip" data-activity="editing">✎ EDIT</span><span class="activity-chip" data-activity="web-search">◎ WEB</span><span class="activity-chip" data-activity="terminal">&gt;_ TERM</span><span class="activity-chip" data-activity="approval">! PERMIT</span><span class="activity-chip" data-activity="waiting">… WAIT</span><span class="activity-chip" data-activity="review">✓ REVIEW</span><span class="activity-chip" data-activity="arrival">→ LOBBY</span></div>
       <div class="metrics" aria-label="Office overview"><div class="metric"><span class="metric-label">Active</span><span id="statActive" class="metric-value">—</span><span class="metric-unit">agents working</span></div><div class="metric"><span class="metric-label">Queued</span><span id="statQueue" class="metric-value">—</span><span class="metric-unit">tasks waiting</span></div><div class="metric"><span class="metric-label">Spend</span><span id="statSpent" class="metric-value money">—</span><span class="metric-unit">USD today · est.</span></div></div>
