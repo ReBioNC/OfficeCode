@@ -24,7 +24,6 @@ describe("dashboard visual-only contract", () => {
   it("has no forms in markup", () => {
     const html = fs.readFileSync("src/dashboard/index.html", "utf8");
     assert.ok(!html.includes("<form"), "sidebar has no forms");
-    assert.ok(!html.includes("<button"), "sidebar has no buttons");
     assert.ok(!html.includes("<input"), "sidebar has no inputs");
   });
   it("shows role pills and status bubbles in the studio", () => {

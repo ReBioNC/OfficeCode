@@ -1,5 +1,6 @@
 import { deskPoint, roomRect, type Rect } from "./layout";
 import { displayWorkRole } from "./work-role";
+import { resolveFocus, hitAgent } from "./agent-inspector";
 import { selectVisibleAgents } from "./live-agents";
 import { allocateStudioSeats, studioGeometry, studioHeight, type OfficeStation, type StudioSeat } from "./studio-seating";
 import { getStudioPeriod, recolorStudioPixels, studioMaterial, STUDIO_THEMES } from "./studio-theme";
@@ -103,6 +104,21 @@ let studioSeats = new Map<string, StudioSeat>();
 let geometry = studioGeometry(studioSeats);
 let studioPeriod = getStudioPeriod(new Date());
 let theme = STUDIO_THEMES[studioPeriod];
+let selectedRunId: string | undefined;
+
+function selectAgent(runId: string): void {
+  selectedRunId = runId;
+  renderPanels();
+  draw();
+}
+
+canvas.addEventListener("click", (event) => {
+  const bounds = canvas.getBoundingClientRect();
+  const sessionId = hitAgent([...agentPositions].map(([id, agent]) => ({ id, ...agent.point })),
+    (event.clientX - bounds.left) * canvas.width / bounds.width, (event.clientY - bounds.top) * canvas.height / bounds.height);
+  const run = visibleAgents().find((entry) => (entry.sessionId ?? entry.id) === sessionId);
+  if (run) selectAgent(run.id);
+});
 
 function updateStudioClock(): boolean {
   const date = new Date();
@@ -161,7 +177,7 @@ function renderPanels(): void {
   const nextGeometry = studioGeometry(studioSeats, occupiedStudioHeight());
   if (geometry.height !== nextGeometry.height) studioDirty = true;
   geometry = nextGeometry;
-  const focus = sessions[0];
+  const focus = resolveFocus(runs, sessions, selectedRunId);
   const roleFor = (run: Run): string => displayWorkRole(run, sessions.length === 1 && focus?.id === run.id);
   (document.getElementById("focusSection") as HTMLElement).hidden = !mirrorOnly;
   (document.getElementById("activityTracker") as HTMLElement).hidden = !mirrorOnly;
@@ -201,6 +217,13 @@ function renderPanels(): void {
     const top = element("div", "activity-top");
     top.append(element("span", "activity-role", mirrorOnly ? roleFor(run) : run.role), element("span", "run-state", mirrorOnly ? activityOf(run).label : label(run.state)));
     item.append(top, element("p", "activity-prompt", short(run.prompt, 120) || run.id));
+    if (mirrorOnly) {
+      const inspect = element("button", "inspect-button", "Inspect agent");
+      inspect.type = "button";
+      inspect.setAttribute("aria-pressed", String(focus?.id === run.id));
+      inspect.onclick = () => selectAgent(run.id);
+      item.append(inspect);
+    }
     if (mirrorOnly && run.detail) item.append(element("p", "activity-detail", short(run.detail, 100)));
     return item;
   });
@@ -218,6 +241,7 @@ function renderPanels(): void {
       const workRole = roleFor(run);
       const card = element("li", "crew-card");
       card.dataset.state = run.state;
+      card.dataset.selected = String(focus?.id === run.id);
       card.style.setProperty("--room-color", activityOf(run).color);
       const avatar = element("span", "crew-avatar");
       const portrait = document.createElement("canvas");
@@ -228,7 +252,13 @@ function renderPanels(): void {
       const copy = element("div", "crew-copy");
       copy.append(element("span", "crew-name", workRole), element("span", "crew-meta", short(`${run.role} · ${run.prompt}`, 36)),
         element("span", "crew-status", activityOf(run).label));
-      card.append(avatar, copy);
+      const choose = element("button", "crew-select");
+      choose.type = "button";
+      choose.setAttribute("aria-label", `Inspect ${workRole}: ${run.prompt}`);
+      choose.setAttribute("aria-pressed", String(focus?.id === run.id));
+      choose.onclick = () => selectAgent(run.id);
+      choose.append(avatar, copy);
+      card.append(choose);
       return card;
     }));
   } else crewUl.replaceChildren(...office.desks.map((desk) => {
@@ -836,6 +866,10 @@ function drawOfficeAgents(sessions: Run[], tick: number, now: number): void {
     const activity = activityOf(run);
     const workRole = displayWorkRole(run, sessions.length === 1);
     const palette = agentPalette(workRole, id);
+    if (run.id === selectedRunId) {
+      ctx.strokeStyle = theme.ui.sage; ctx.lineWidth = 2;
+      ctx.strokeRect(x - 5, y - 3, 46, 48);
+    }
     if (computer) {
       ctx.fillStyle = tick % 2 === 0 ? "#b5fff0" : "#67dccb";
       ctx.fillRect(computer[0] + 18, computer[1] - 8, 13, 2);

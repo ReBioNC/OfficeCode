@@ -91,6 +91,10 @@
     .crew-status { display:block; margin-top:6px; font:10px "Courier New",monospace; color:#8de8dc; }
     .crew-card[data-state="blocked"] .crew-status { color:#ff9e9b; }
     .crew-card[data-state="free"] .crew-status { color:#b8b2cd; }
+    .crew-select { display:flex; gap:9px; align-items:center; width:100%; padding:0; background:none; border:0; color:inherit; text-align:left; cursor:pointer; }
+    .crew-card[data-selected="true"] { outline:2px solid var(--sage); outline-offset:-2px; }
+    .inspect-button { margin-top:8px; padding:4px 7px; border:1px solid var(--line); background:var(--paper); color:var(--ink); font:10px "Courier New",monospace; cursor:pointer; }
+    #floor { cursor:pointer; }
     :focus-visible { outline:3px solid #81e8da; outline-offset:3px; }
     /* Time-of-day colors share one vocabulary across the studio and panels. */
     .floor-status { display:flex; flex-direction:column; align-items:flex-end; gap:6px; }
