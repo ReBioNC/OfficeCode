@@ -10,7 +10,7 @@ import {
   COMPUTER_MAP, COMPUTER_PALETTE, DESK_MAP, DESK_PALETTE, INK, PLANT_MAP, PLANT_PALETTE,
   PRINTER_MAP, PRINTER_PALETTE, RACK_MAP, RACK_PALETTE,
   SOFA_MAP, SOFA_PALETTE, TABLE_MAP, TABLE_PALETTE, WALK_FRAMES,
-  agentPalette, drawSprite, frameForState, shirtPalette, snap,
+  agentPalette, avatarFrame, drawSprite, frameForState, shirtPalette, snap,
 } from "./sprites";
 
 interface Desk { id: string; roomId: string; label: string }
@@ -223,7 +223,7 @@ function renderPanels(): void {
       const portrait = document.createElement("canvas");
       portrait.width = 30; portrait.height = 35;
       const portraitCtx = portrait.getContext("2d");
-      if (portraitCtx) drawSprite(portraitCtx, CHAR_FRAMES.idle, agentPalette(workRole, run.sessionId ?? run.id), 3, 3, 2);
+      if (portraitCtx) drawSprite(portraitCtx, avatarFrame(run.sessionId ?? run.id, CHAR_FRAMES.idle), agentPalette(workRole, run.sessionId ?? run.id), 3, 3, 2);
       avatar.append(portrait);
       const copy = element("div", "crew-copy");
       copy.append(element("span", "crew-name", workRole), element("span", "crew-meta", short(`${run.role} · ${run.prompt}`, 36)),
@@ -850,7 +850,7 @@ function drawOfficeAgents(sessions: Run[], tick: number, now: number): void {
     const frame = !arrived ? WALK_FRAMES[agent.direction][Math.floor(now / 90) % 8]
       : CHAR_FRAMES[station === "thinking" || station === "delegating" ? (tick % 2 === 0 ? "talkA" : "talkB")
         : seated ? (tick % 2 === 0 ? "typeA" : "typeB") : frameForState(run.state, tick)];
-    drawSprite(ctx, frame, palette, x, y, scale);
+    drawSprite(ctx, avatarFrame(id, frame, !arrived ? agent.direction : seated && computer ? "north" : "south"), palette, x, y, scale);
     if (seated) drawOccupiedChair(x, y, scale, true);
     if (station === "reading" && arrived) {
       ctx.fillStyle = "#fff1df"; ctx.fillRect(x + 8, y + 27, 22, 14);
