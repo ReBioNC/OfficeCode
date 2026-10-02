@@ -2,6 +2,7 @@ import { deskPoint, roomRect, type Rect } from "./layout";
 import { displayWorkRole } from "./work-role";
 import { resolveFocus, hitAgent } from "./agent-inspector";
 import { stepDuration, type ActivityStep } from "../shared/run-history";
+import { attachStudioCamera } from "./studio-camera";
 import { selectVisibleAgents } from "./live-agents";
 import { allocateStudioSeats, studioGeometry, studioHeight, type OfficeStation, type StudioSeat } from "./studio-seating";
 import { getStudioPeriod, recolorStudioPixels, studioMaterial, STUDIO_THEMES } from "./studio-theme";
@@ -106,6 +107,10 @@ let geometry = studioGeometry(studioSeats);
 let studioPeriod = getStudioPeriod(new Date());
 let theme = STUDIO_THEMES[studioPeriod];
 let selectedRunId: string | undefined;
+const camera = attachStudioCamera(canvas, () => {
+  const focus = resolveFocus(runs, visibleAgents(), selectedRunId);
+  return focus ? agentPositions.get(focus.sessionId ?? focus.id)?.point : undefined;
+});
 
 function selectAgent(runId: string): void {
   selectedRunId = runId;
@@ -114,6 +119,7 @@ function selectAgent(runId: string): void {
 }
 
 canvas.addEventListener("click", (event) => {
+  if (camera.suppressClick()) return;
   const bounds = canvas.getBoundingClientRect();
   const sessionId = hitAgent([...agentPositions].map(([id, agent]) => ({ id, ...agent.point })),
     (event.clientX - bounds.left) * canvas.width / bounds.width, (event.clientY - bounds.top) * canvas.height / bounds.height);
@@ -240,6 +246,7 @@ function renderPanels(): void {
   const roomSlots = office.rooms.length <= 5 ? office.rooms.length + 1 : office.rooms.length;
   const floorHeight = mirrorOnly ? geometry.height : Math.max(560, 124 + Math.ceil(roomSlots / 3) * 218);
   if (canvas.height !== floorHeight) canvas.height = floorHeight;
+  camera.updateSize();
 
   const activityNodes = [...runs].reverse().slice(0, 5).map((run) => {
     const item = element("li", "activity-item");
@@ -970,6 +977,7 @@ function drawSessionFloor(tick: number, now: number): void {
   if (desiredHeight !== geometry.height) {
     geometry = studioGeometry(studioSeats, desiredHeight);
     canvas.height = desiredHeight;
+    camera.updateSize();
     studioDirty = true;
   }
   if (studioDirty || !backgroundCtx || studioBackground.width !== canvas.width || studioBackground.height !== canvas.height) {

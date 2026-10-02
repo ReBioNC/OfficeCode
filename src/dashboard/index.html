@@ -18,8 +18,11 @@
     h1 { margin-bottom:0; font-size:clamp(20px,2vw,28px); line-height:1; letter-spacing:-.04em; }
     h1 span { color:#ff9690; }
     .floor-meta { color:#bcb7d4; white-space:nowrap; }
-    .floor-stage { flex:1; min-height:0; display:grid; place-items:center; padding:18px 20px; background:radial-gradient(circle at 50% 35%,#292444 0%,#0b0e20 72%); }
-    #floor { display:block; width:100%; height:100%; object-fit:contain; image-rendering:pixelated; }
+    .floor-stage { position:relative; flex:1; min-height:0; display:block; overflow:auto; padding:12px; touch-action:none; overscroll-behavior:contain; background:radial-gradient(circle at 50% 35%,#292444 0%,#0b0e20 72%); }
+    #floor { display:block; margin:0 auto; max-width:none; image-rendering:pixelated; }
+    .studio-toolbar { display:flex; flex-wrap:wrap; align-items:center; gap:6px; padding:7px 16px; border-bottom:1px solid var(--line); background:var(--panel); }
+    .studio-toolbar button { min-height:32px; min-width:34px; padding:5px 9px; border:1px solid var(--line); background:var(--light); color:var(--ink); font:700 11px "Courier New",monospace; cursor:pointer; }
+    .studio-toolbar span { color:var(--muted); font:10px "Courier New",monospace; }
     .floor-footer { display:flex; align-items:center; justify-content:space-between; gap:12px; min-height:40px; padding:0 24px; color:#bcb7d4; border-top:1px solid #403954; font:11px "Courier New",monospace; }
     .floor-footer strong { color:var(--accent); }
     .command-center { display:flex; flex-direction:column; min-width:0; min-height:0; background:var(--paper); border-left:4px solid #8c5d88; box-shadow:inset 1px 0 #0b0e20; }
@@ -138,13 +141,14 @@
     .center-scroll,.crew-list { scrollbar-color:var(--frame) transparent; }
     :focus-visible { outline-color:var(--sage); }
     @media (max-width:960px) { .app { display:flex; flex-direction:column; height:auto; min-height:100dvh; overflow:visible; } .floor-stage { height:min(65vw,600px); min-height:250px; } .command-center { border-left:0; border-top:4px solid #8c5d88; box-shadow:none; } .center-scroll { overflow:visible; } .crew { order:2; min-height:126px; } }
-    @media (max-width:540px) { .floor-header { padding:12px 15px; } .floor-meta { font-size:8px; } .floor-stage { display:block; padding:8px; height:440px; overflow-x:auto; overflow-y:hidden; } #floor { width:720px; height:420px; max-width:none; } .floor-footer { padding:0 15px; font-size:9px; } .metric { padding:12px 10px; } .metric-value { font-size:19px; } .metric-value.money { font-size:14px; } .crew-heading { flex-basis:100px; padding-left:10px; } }
+    @media (max-width:540px) { .floor-header { padding:12px 15px; } .floor-meta { font-size:8px; } .floor-stage { padding:12px; height:440px; flex:none; overflow:auto; } .floor-footer { padding:0 15px; font-size:9px; } .metric { padding:12px 10px; } .metric-value { font-size:19px; } .metric-value.money { font-size:14px; } .crew-heading { flex-basis:100px; padding-left:10px; } }
   </style>
 </head>
 <body>
   <div class="app">
     <main class="floor-panel" aria-label="Live office floor">
       <header class="floor-header"><div><p id="studioPeriod" class="eyebrow">Studio / live feed</p><h1>Office<span>Code</span> Studio</h1></div><div class="floor-status"><span id="floorMeta" class="floor-meta">Loading studio…</span><time id="studioClock" aria-label="Local time"></time></div></header>
+      <div class="studio-toolbar" role="group" aria-label="Studio view controls"><button id="zoomOut" type="button" aria-label="Zoom out">−</button><span id="zoomValue" aria-live="polite">100%</span><button id="zoomIn" type="button" aria-label="Zoom in">+</button><button id="zoomFit" type="button">Fit studio</button><button id="zoomFocus" type="button">Focus agent</button><span>Drag to pan · pinch to zoom</span></div>
       <div class="floor-stage"><canvas id="floor" width="960" height="560" role="img" aria-label="Office studio with agents, workstations, and live OpenCode activity"></canvas></div>
       <div class="floor-footer"><span>One studio · agents follow OpenCode activity</span><strong id="lastSync">Waiting for sync</strong></div>
     </main>
