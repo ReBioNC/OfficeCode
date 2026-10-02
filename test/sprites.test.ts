@@ -11,6 +11,8 @@ import {
   SOFA_MAP,
   TABLE_MAP,
   agentPalette,
+  avatarFrame,
+  AVATAR_STYLES,
   frameForState,
   snap,
   validateMap,
@@ -73,6 +75,23 @@ describe("snap", () => {
 });
 
 describe("agentPalette", () => {
+  it("renders twelve distinct models without losing pose dimensions or direction", () => {
+    const looks = AVATAR_STYLES.map((_, index) => avatarFrame(`avatar-${index}`, CHAR_FRAMES.idle, "south", index));
+    assert.equal(new Set(looks.map((map) => map.join("\n"))).size, 12);
+    for (let model = 0; model < AVATAR_STYLES.length; model++) {
+      for (const direction of ["north", "south", "east", "west"] as const) {
+        for (const base of WALK_FRAMES[direction]) {
+          const map = avatarFrame("stable-session", base, direction, model);
+          assert.equal(map.length, 14);
+          assert.ok(map.every((row) => row.length === 12));
+          assert.ok([...map.join("")].every((pixel) => pixel === "." || pixel in agentPalette("build", "stable-session")));
+          if (direction === "north") assert.ok(!map.join("").includes("E"));
+        }
+      }
+    }
+    assert.deepEqual(avatarFrame("stable-session", CHAR_FRAMES.idle), avatarFrame("stable-session", CHAR_FRAMES.idle));
+    assert.deepEqual(CHAR_FRAMES.idle, allMaps[0][1]);
+  });
   it("keeps an agent's appearance stable and its role color consistent", () => {
     const first = agentPalette("build", "session-alpha");
     assert.deepEqual(agentPalette("build", "session-alpha"), first);

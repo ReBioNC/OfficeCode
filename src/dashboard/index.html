@@ -18,8 +18,14 @@
     h1 { margin-bottom:0; font-size:clamp(20px,2vw,28px); line-height:1; letter-spacing:-.04em; }
     h1 span { color:#ff9690; }
     .floor-meta { color:#bcb7d4; white-space:nowrap; }
-    .floor-stage { flex:1; min-height:0; display:grid; place-items:center; padding:18px 20px; background:radial-gradient(circle at 50% 35%,#292444 0%,#0b0e20 72%); }
-    #floor { display:block; width:100%; height:100%; object-fit:contain; image-rendering:pixelated; }
+    .floor-stage { position:relative; flex:1; min-height:0; display:block; overflow:auto; padding:12px; touch-action:none; overscroll-behavior:contain; background:radial-gradient(circle at 50% 35%,#292444 0%,#0b0e20 72%); }
+    #floor { display:block; margin:0 auto; max-width:none; image-rendering:pixelated; }
+    .studio-toolbar { display:flex; flex-wrap:wrap; align-items:center; gap:6px; padding:7px 16px; border-bottom:1px solid var(--line); background:var(--panel); }
+    .studio-toolbar button { min-height:32px; min-width:34px; padding:5px 9px; border:1px solid var(--line); background:var(--light); color:var(--ink); font:700 11px "Courier New",monospace; cursor:pointer; }
+    .studio-toolbar span { color:var(--muted); font:10px "Courier New",monospace; }
+    .studio-toolbar button:disabled { opacity:.45; cursor:default; }
+    .studio-toolbar button[aria-pressed="true"] { border-color:var(--sage); background:var(--active-bg); }
+    details.panel-section summary { cursor:pointer; }
     .floor-footer { display:flex; align-items:center; justify-content:space-between; gap:12px; min-height:40px; padding:0 24px; color:#bcb7d4; border-top:1px solid #403954; font:11px "Courier New",monospace; }
     .floor-footer strong { color:var(--accent); }
     .command-center { display:flex; flex-direction:column; min-width:0; min-height:0; background:var(--paper); border-left:4px solid #8c5d88; box-shadow:inset 1px 0 #0b0e20; }
@@ -91,6 +97,22 @@
     .crew-status { display:block; margin-top:6px; font:10px "Courier New",monospace; color:#8de8dc; }
     .crew-card[data-state="blocked"] .crew-status { color:#ff9e9b; }
     .crew-card[data-state="free"] .crew-status { color:#b8b2cd; }
+    .crew-select { display:flex; gap:9px; align-items:center; width:100%; padding:0; background:none; border:0; color:inherit; text-align:left; cursor:pointer; }
+    .crew-card[data-selected="true"] { outline:2px solid var(--sage); outline-offset:-2px; }
+    .inspect-button { margin-top:8px; padding:4px 7px; border:1px solid var(--line); background:var(--paper); color:var(--ink); font:10px "Courier New",monospace; cursor:pointer; }
+    #floor { cursor:pointer; }
+    .team-list { list-style:none; padding:0; margin:0; display:grid; gap:8px; }
+    .team-item { border-left:2px solid var(--sage); padding-left:9px; }
+    .team-select { border:0; padding:3px 0; background:none; color:var(--ink); font:700 11px "Courier New",monospace; text-align:left; cursor:pointer; }
+    .team-parent { display:block; color:var(--muted); font:10px/1.5 "Courier New",monospace; }
+    .timeline-list { margin:0; padding:0; list-style:none; display:grid; gap:10px; }
+    .timeline-step { display:grid; grid-template-columns:62px 1fr; gap:3px 8px; padding-left:8px; border-left:2px solid var(--sage); font:10px/1.4 "Courier New",monospace; }
+    .timeline-time { color:var(--muted); }
+    .timeline-detail { grid-column:2; color:var(--muted); overflow-wrap:anywhere; }
+    #lastEvent { display:block; margin-top:6px; color:var(--muted); font:10px "Courier New",monospace; }
+    .timeline-step[data-outcome="error"] { border-left-color:var(--red); }
+    .timeline-step[data-outcome="completed"] { border-left-color:var(--success); }
+    .tool-list { margin:10px 0 0; padding-left:16px; color:var(--sage); font:10px/1.6 "Courier New",monospace; }
     :focus-visible { outline:3px solid #81e8da; outline-offset:3px; }
     /* Time-of-day colors share one vocabulary across the studio and panels. */
     .floor-status { display:flex; flex-direction:column; align-items:flex-end; gap:6px; }
@@ -126,22 +148,25 @@
     .center-scroll,.crew-list { scrollbar-color:var(--frame) transparent; }
     :focus-visible { outline-color:var(--sage); }
     @media (max-width:960px) { .app { display:flex; flex-direction:column; height:auto; min-height:100dvh; overflow:visible; } .floor-stage { height:min(65vw,600px); min-height:250px; } .command-center { border-left:0; border-top:4px solid #8c5d88; box-shadow:none; } .center-scroll { overflow:visible; } .crew { order:2; min-height:126px; } }
-    @media (max-width:540px) { .floor-header { padding:12px 15px; } .floor-meta { font-size:8px; } .floor-stage { display:block; padding:8px; height:440px; overflow-x:auto; overflow-y:hidden; } #floor { width:720px; height:420px; max-width:none; } .floor-footer { padding:0 15px; font-size:9px; } .metric { padding:12px 10px; } .metric-value { font-size:19px; } .metric-value.money { font-size:14px; } .crew-heading { flex-basis:100px; padding-left:10px; } }
+    @media (max-width:540px) { .floor-header { padding:12px 15px; } .floor-meta { font-size:8px; } .floor-stage { padding:12px; height:440px; flex:none; overflow:auto; } .floor-footer { padding:0 15px; font-size:9px; } .metric { padding:12px 10px; } .metric-value { font-size:19px; } .metric-value.money { font-size:14px; } .crew-heading { flex-basis:100px; padding-left:10px; } }
   </style>
 </head>
 <body>
   <div class="app">
     <main class="floor-panel" aria-label="Live office floor">
       <header class="floor-header"><div><p id="studioPeriod" class="eyebrow">Studio / live feed</p><h1>Office<span>Code</span> Studio</h1></div><div class="floor-status"><span id="floorMeta" class="floor-meta">Loading studio…</span><time id="studioClock" aria-label="Local time"></time></div></header>
+      <div class="studio-toolbar" role="group" aria-label="Studio view controls"><button id="zoomOut" type="button" aria-label="Zoom out">−</button><span id="zoomValue" aria-live="polite">100%</span><button id="zoomIn" type="button" aria-label="Zoom in">+</button><button id="zoomFit" type="button">Fit studio</button><button id="zoomFocus" type="button">Focus agent</button><button id="toggleRelations" type="button" aria-pressed="false" hidden>Show relations</button><span>Drag to pan · pinch to zoom</span></div>
       <div class="floor-stage"><canvas id="floor" width="960" height="560" role="img" aria-label="Office studio with agents, workstations, and live OpenCode activity"></canvas></div>
       <div class="floor-footer"><span>One studio · agents follow OpenCode activity</span><strong id="lastSync">Waiting for sync</strong></div>
     </main>
     <aside class="command-center" aria-label="Office information center">
-      <header class="command-header"><div class="command-title"><div><h2>Activity center</h2><p class="command-subtitle">Follow agent workflows in the studio.</p></div><span class="view-tag">LIVE</span></div><span id="connection" class="connection" data-state="offline" role="status">Connecting…</span></header>
+      <header class="command-header"><div class="command-title"><div><h2>Activity center</h2><p class="command-subtitle">Follow agent workflows in the studio.</p></div><span class="view-tag">LIVE</span></div><span id="connection" class="connection" data-state="offline" role="status">Connecting…</span><span id="lastEvent">No activity received yet</span></header>
       <div id="activityTracker" class="activity-tracker" aria-label="Current agent activity" hidden><span class="activity-chip" data-activity="thinking">◌ THINK</span><span class="activity-chip" data-activity="reading">▤ READ</span><span class="activity-chip" data-activity="editing">✎ EDIT</span><span class="activity-chip" data-activity="web-search">◎ WEB</span><span class="activity-chip" data-activity="terminal">&gt;_ TERM</span><span class="activity-chip" data-activity="approval">! PERMIT</span></div>
       <div class="metrics" aria-label="Office overview"><div class="metric"><span class="metric-label">Active</span><span id="statActive" class="metric-value">—</span><span class="metric-unit">agents working</span></div><div class="metric"><span class="metric-label">Queued</span><span id="statQueue" class="metric-value">—</span><span class="metric-unit">tasks waiting</span></div><div class="metric"><span class="metric-label">Spend</span><span id="statSpent" class="metric-value money">—</span><span class="metric-unit">USD today · est.</span></div></div>
       <div class="center-scroll">
-        <section id="focusSection" class="panel-section focus-card" aria-labelledby="focusHeading" hidden><div class="section-heading"><h3 id="focusHeading">Current work</h3><span id="focusStation">Standby</span></div><div class="focus-body"><span id="focusRole" class="focus-role">OpenCode agent</span><span id="focusTask" class="focus-task">Waiting for a session</span><span id="focusActivity" class="focus-activity">No activity yet</span><span id="focusDetail" class="focus-detail">Start working on a feature in OpenCode.</span></div></section>
+        <section id="focusSection" class="panel-section focus-card" aria-labelledby="focusHeading" hidden><div class="section-heading"><h3 id="focusHeading">Current work</h3><span id="focusStation">Standby</span></div><div class="focus-body"><span id="focusRole" class="focus-role">OpenCode agent</span><span id="focusTask" class="focus-task">Waiting for a session</span><span id="focusActivity" class="focus-activity">No activity yet</span><span id="focusDetail" class="focus-detail">Start working on a feature in OpenCode.</span><ul id="activeTools" class="tool-list" aria-label="Active tools" hidden></ul></div></section>
+        <section id="teamSection" class="panel-section" aria-labelledby="teamHeading" hidden><div class="section-heading"><h3 id="teamHeading">Delegation</h3><span>Live team</span></div><ul id="teamList" class="team-list"></ul></section>
+        <details open id="timelineSection" class="panel-section" aria-labelledby="timelineHeading" hidden><summary class="section-heading"><h3 id="timelineHeading">Workflow timeline</h3><span>Expand / collapse</span></summary><p id="timelineSummary" class="team-parent"></p><ol id="timelineList" class="timeline-list"></ol></details>
         <section class="panel-section" aria-labelledby="activityTitle"><div class="section-heading"><h3 id="activityTitle">Recent activity</h3><span id="activityCount">0 runs</span></div><ul id="runs" class="activity-list" aria-live="polite"><li class="empty">No activity yet. Start a task in OpenCode.</li></ul></section>
         <section class="panel-section" aria-labelledby="queueTitle"><div class="section-heading"><h3 id="queueTitle">Queue</h3><span id="queueCount">0 tasks</span></div><ul id="queue" class="queue-list" aria-live="polite"></ul><p id="queueEmpty" class="empty">No tasks waiting.</p></section>
         <section class="panel-section guide" aria-labelledby="guideTitle"><div class="section-heading"><h3 id="guideTitle">From OpenCode</h3><span>Commands</span></div><p>Find the dashboard URL with <code>/dashboard</code>. Rooms, agents, and activity follow live OpenCode events.</p><div class="command-code"><code>/dashboard</code></div></section>

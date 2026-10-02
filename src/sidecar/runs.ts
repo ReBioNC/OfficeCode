@@ -5,6 +5,7 @@ import { makeEvent, type RunState } from "../shared/events.js";
 import { appendEvent, nextSeq } from "./ledgers.js";
 import type { OfficeStore } from "./office-store.js";
 import type { Driver } from "./drivers.js";
+import type { ActivityStep, ActiveTool, ToolResult } from "../shared/run-history.js";
 
 export interface RunRecord {
   id: string;
@@ -13,8 +14,14 @@ export interface RunRecord {
   prompt: string;
   state: RunState;
   sessionId?: string;
+  parentSessionId?: string;
   activity?: string;
   detail?: string;
+  startedAt?: string;
+  finishedAt?: string;
+  timeline?: ActivityStep[];
+  historyTruncated?: number;
+  activeTools?: ActiveTool[];
   transcriptPath: string;
   outboxDir: string;
   exitCode: number | null;
@@ -78,12 +85,13 @@ function notFound(sessionId: string): Error & { code: number } {
 export async function registerMirrorRun(
   store: OfficeStore,
   workspaceDir: string,
-  input: { sessionId: string; role: string; prompt: string },
+  input: { sessionId: string; role: string; prompt: string; parentSessionId?: string },
 ): Promise<RunRecord> {
   const existing = getMirrorRun(input.sessionId);
   if (existing) {
     if (input.prompt && input.prompt !== "OpenCode session") existing.prompt = input.prompt.slice(0, 200);
     if (input.role && input.role !== "opencode") existing.role = input.role.slice(0, 48);
+    if (input.parentSessionId) existing.parentSessionId = input.parentSessionId;
     notifyRun(existing);
     return existing;
   }
@@ -99,14 +107,18 @@ export async function registerMirrorRun(
     prompt: input.prompt || "opencode session",
     state: "walking",
     sessionId: input.sessionId,
+    parentSessionId: input.parentSessionId,
     activity: "arriving",
     detail: "Setting up workspace",
+    startedAt: new Date().toISOString(),
+    timeline: [],
     transcriptPath: path.join(store.dir, "transcripts", `${id}.md`),
     outboxDir: path.join(store.dir, "outbox", id),
     exitCode: null,
   };
   runs.set(id, run);
   mirrorBySession.set(input.sessionId, id);
+  recordMirrorStep(run);
   notifyRun(run);
   appendEvent(store.dir, makeEvent(nextSeq(store.dir), id, "run.created", { state: "walking", message: `mirror ${input.sessionId}` }));
   fs.mkdirSync(path.dirname(run.transcriptPath), { recursive: true });
@@ -117,7 +129,7 @@ export async function registerMirrorRun(
 export async function mirrorEvent(
   store: OfficeStore,
   sessionId: string,
-  event: { state: RunState; message?: string; prompt?: string; role?: string; activity?: string; detail?: string },
+  event: { state: RunState; message?: string; prompt?: string; role?: string; activity?: string; detail?: string; activeTools?: ActiveTool[]; toolResult?: ToolResult },
 ): Promise<RunRecord> {
   const run = getMirrorRun(sessionId);
   if (!run) throw notFound(sessionId);
@@ -125,6 +137,9 @@ export async function mirrorEvent(
   if (event.role) run.role = event.role.slice(0, 48);
   if (event.activity) run.activity = event.activity;
   if (event.detail !== undefined) run.detail = event.detail.slice(0, 160);
+  if (event.activeTools) run.activeTools = event.activeTools.map((tool) => ({ ...tool }));
+  if (event.toolResult) recordMirrorStep(run, { at: new Date().toISOString(), state: "acting", activity: event.toolResult.activity,
+    detail: event.toolResult.detail, outcome: event.toolResult.outcome, durationMs: event.toolResult.durationMs });
   if (event.message) {
     fs.appendFileSync(run.transcriptPath, `\n[${run.state}→${event.state}] ${event.message}\n`, "utf8");
   }
@@ -141,9 +156,11 @@ export async function finishMirrorRun(
   const run = getMirrorRun(sessionId);
   if (!run) throw notFound(sessionId);
   appendEvent(store.dir, makeEvent(nextSeq(store.dir), run.id, "run.finished", { state: outcome }));
-  setState(store, run, outcome, message);
   run.activity = outcome;
   run.detail = outcome === "done" ? "Session complete" : "Session stopped";
+  run.finishedAt = new Date().toISOString();
+  run.activeTools = [];
+  setState(store, run, outcome, message);
   store.occupants.delete(run.deskId);
   mirrorBySession.delete(sessionId);
   notifyRun(run);
@@ -157,8 +174,20 @@ export async function finishMirrorRun(
   return run;
 }
 
+function recordMirrorStep(run: RunRecord, result?: ActivityStep): void {
+  if (!run.timeline) return;
+  const previous = run.timeline[run.timeline.length - 1];
+  const step: ActivityStep = result ?? { at: new Date().toISOString(), state: run.state, activity: run.activity ?? run.state, detail: run.detail ?? "" };
+  if (previous?.state === step.state && previous.activity === step.activity && previous.detail === step.detail && previous.outcome === step.outcome) return;
+  run.timeline.push(step);
+  if (run.timeline.length > 100) {
+    run.timeline.shift(); run.historyTruncated = (run.historyTruncated ?? 0) + 1;
+  }
+}
+
 function setState(store: OfficeStore, run: RunRecord, state: RunState, message?: string): void {
   run.state = state;
+  recordMirrorStep(run);
   appendEvent(store.dir, makeEvent(nextSeq(store.dir), run.id, "run.state", { state, message }));
   notifyRun(run);
 }

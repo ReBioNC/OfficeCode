@@ -2,6 +2,8 @@
 
 A global [OpenCode](https://opencode.ai/) plugin that visualizes agents and tool activity in a live pixel-art office. Themes follow your local clock. OpenCode runs every model; the dashboard makes no additional model calls.
 
+Click an agent to inspect its work, concurrent tools, delegation links, and workflow timeline. Use **Fit studio**, **Focus agent**, drag, or pinch to navigate. Avatar models remain stable per session.
+
 ![OfficeCode studio with Frontend, Backend, and QA agents](docs/assets/studio-preview.png)
 
 ## Install
@@ -64,3 +66,12 @@ After installing or updating, **close all OpenCode instances**, reopen OpenCode 
 The server starts automatically with OpenCode and stops after the last OpenCode instance using that project closes. `/dashboard` only shows the URL and status; `npm run dev` is unnecessary.
 
 For troubleshooting, uninstall, API, and development details, see the [full guide](docs/GUIDE.md).
+
+### API additions
+
+| Endpoint | Dashboard metadata |
+| --- | --- |
+| `GET /api/health` | `activeLeases` counts connected OpenCode instances; `lastEventAt` is the last run update time. |
+| `POST /api/mirror/session` | Optional `parentSessionId` links an OpenCode subagent to its parent. |
+| `GET /api/runs` | Mirrored runs include `startedAt`, `finishedAt`, and the latest 100 timestamped `timeline` steps. History remains available until the server stops. |
+| `POST /api/mirror/event` | Optional `activeTools` lists concurrent calls; `toolResult` records a completed/failed call with duration. |

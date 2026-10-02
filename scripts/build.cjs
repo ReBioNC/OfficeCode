@@ -17,7 +17,7 @@ run(
     "test/office-store.test.ts test/ledgers.test.ts test/drivers.test.ts " +
     "test/studio-theme.test.ts test/studio-seating.test.ts test/agent-motion.test.ts test/live-agents.test.ts test/sprites.test.ts test/roles.test.ts test/models.test.ts test/queue.test.ts test/budgets.test.ts test/server-m2.test.ts test/commands.test.ts test/mirror.test.ts test/server-mirror.test.ts test/opencode-plugin.test.ts " +
     "test/runs.test.ts test/server.test.ts test/layout.test.ts test/xss-contract.test.ts " +
-    "test/client-contract.test.ts test/server-lease.test.ts test/work-role.test.ts " +
+    "test/connection-status.test.ts test/studio-camera.test.ts test/agent-inspector.test.ts test/client-contract.test.ts test/server-lease.test.ts test/work-role.test.ts " +
     "--outDir dist-test --module commonjs --target ES2022 --moduleResolution node " +
     "--strict --sourceMap false --declaration false --types node --lib ES2022,DOM " +
     "--esModuleInterop true"

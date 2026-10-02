@@ -1,5 +1,9 @@
 import { deskPoint, roomRect, type Rect } from "./layout";
-import { displayWorkRole } from "./work-role";
+import { displayWorkRole, resolveWorkRole } from "./work-role";
+import { resolveFocus, hitAgent, delegationRows } from "./agent-inspector";
+import { stepDuration, type ActivityStep, type ActiveTool } from "../shared/run-history";
+import { attachStudioCamera } from "./studio-camera";
+import { connectionStatus } from "./connection-status";
 import { selectVisibleAgents } from "./live-agents";
 import { allocateStudioSeats, studioGeometry, studioHeight, type OfficeStation, type StudioSeat } from "./studio-seating";
 import { getStudioPeriod, recolorStudioPixels, studioMaterial, STUDIO_THEMES } from "./studio-theme";
@@ -10,7 +14,7 @@ import {
   COMPUTER_MAP, COMPUTER_PALETTE, DESK_MAP, DESK_PALETTE, INK, PLANT_MAP, PLANT_PALETTE,
   PRINTER_MAP, PRINTER_PALETTE, RACK_MAP, RACK_PALETTE,
   SOFA_MAP, SOFA_PALETTE, TABLE_MAP, TABLE_PALETTE, WALK_FRAMES,
-  agentPalette, drawSprite, frameForState, shirtPalette, snap,
+  agentPalette, avatarFrame, drawSprite, frameForState, shirtPalette, snap,
 } from "./sprites";
 
 interface Desk { id: string; roomId: string; label: string }
@@ -18,7 +22,7 @@ interface Room { id: string; name: string; color: string }
 interface Hallway { fromRoomId: string; toRoomId: string; open: boolean }
 interface PlacedObject { id: string; roomId: string; kind: string }
 interface OfficeDoc { building: string; rooms: Room[]; desks: Desk[]; hallways: Hallway[]; objects: PlacedObject[] }
-interface Run { id: string; deskId: string; role: string; state: string; prompt: string; sessionId?: string; activity?: string; detail?: string }
+interface Run { id: string; deskId: string; role: string; state: string; prompt: string; sessionId?: string; parentSessionId?: string; activity?: string; detail?: string; startedAt?: string; finishedAt?: string; timeline?: ActivityStep[]; historyTruncated?: number; activeTools?: ActiveTool[] }
 interface QueueItem { position: number; deskId: string; role: string; prompt: string }
 
 const COLORS = {
@@ -88,6 +92,10 @@ let queue: QueueItem[] = [];
 let spentEstimated = 0;
 let streamReady = false;
 let latestFetchOkay = false;
+let serverAvailable = false;
+let healthAttempted = false;
+let lastSnapshotAt = 0;
+let healthInfo: { leaseManaged?: boolean; activeLeases?: number; lastEventAt?: string | null } = {};
 let refreshPending = false;
 let refreshing = false;
 let retryTimer: number | undefined;
@@ -103,6 +111,34 @@ let studioSeats = new Map<string, StudioSeat>();
 let geometry = studioGeometry(studioSeats);
 let studioPeriod = getStudioPeriod(new Date());
 let theme = STUDIO_THEMES[studioPeriod];
+let selectedRunId: string | undefined;
+let showRelations = false;
+const relationsToggle = document.getElementById("toggleRelations") as HTMLButtonElement;
+relationsToggle.onclick = () => {
+  showRelations = !showRelations;
+  relationsToggle.setAttribute("aria-pressed", String(showRelations));
+  relationsToggle.textContent = showRelations ? "Hide relations" : "Show relations";
+  draw();
+};
+const camera = attachStudioCamera(canvas, () => {
+  const focus = resolveFocus(runs, visibleAgents(), selectedRunId);
+  return focus ? agentPositions.get(focus.sessionId ?? focus.id)?.point : undefined;
+});
+
+function selectAgent(runId: string): void {
+  selectedRunId = runId;
+  renderPanels();
+  draw();
+}
+
+canvas.addEventListener("click", (event) => {
+  if (camera.suppressClick()) return;
+  const bounds = canvas.getBoundingClientRect();
+  const sessionId = hitAgent([...agentPositions].map(([id, agent]) => ({ id, ...agent.point })),
+    (event.clientX - bounds.left) * canvas.width / bounds.width, (event.clientY - bounds.top) * canvas.height / bounds.height);
+  const run = visibleAgents().find((entry) => (entry.sessionId ?? entry.id) === sessionId);
+  if (run) selectAgent(run.id);
+});
 
 function updateStudioClock(): boolean {
   const date = new Date();
@@ -149,28 +185,74 @@ function element<K extends keyof HTMLElementTagNameMap>(tag: K, className: strin
 }
 
 function renderConnection(): void {
-  const online = streamReady && latestFetchOkay;
-  connection.dataset.state = online ? "online" : "offline";
-  connection.textContent = online ? "Live · synced" : "Reconnecting…";
+  const status = connectionStatus({ server: serverAvailable, stream: streamReady, fresh: latestFetchOkay && Date.now() - lastSnapshotAt < 30_000,
+    managed: healthInfo.leaseManaged === true, leases: healthInfo.activeLeases ?? 0, active: visibleAgents().length, attempted: healthAttempted });
+  connection.dataset.state = status.state;
+  connection.textContent = status.text;
+  canvas.dataset.sync = status.state;
+  const lastEvent = document.getElementById("lastEvent") as HTMLElement;
+  lastEvent.textContent = healthInfo.lastEventAt ? `Last event ${new Date(healthInfo.lastEventAt).toLocaleTimeString("en-GB")}` : "No activity received yet";
 }
 
 function renderPanels(): void {
+  const focusedKey = (document.activeElement as HTMLElement | null)?.dataset.focusKey;
   const runById = new Map(runs.map((run) => [run.id, run]));
   const sessions = mirrorOnly ? visibleAgents() : [];
   studioSeats = allocateStudioSeats(sessions.map((run) => ({ id: run.sessionId ?? run.id, station: stationFor(run) })), studioSeats);
   const nextGeometry = studioGeometry(studioSeats, occupiedStudioHeight());
   if (geometry.height !== nextGeometry.height) studioDirty = true;
   geometry = nextGeometry;
-  const focus = sessions[0];
-  const roleFor = (run: Run): string => displayWorkRole(run, sessions.length === 1 && focus?.id === run.id);
+  const focus = resolveFocus(runs, sessions, selectedRunId);
+  relationsToggle.hidden = !mirrorOnly;
+  (document.getElementById("zoomFocus") as HTMLButtonElement).disabled = !focus || !sessions.some((run) => run.id === focus.id);
+  (document.getElementById("timelineSection") as HTMLElement).hidden = !mirrorOnly;
+  const steps = focus?.timeline ?? [];
+  const timeline = document.getElementById("timelineList") as HTMLElement;
+  timeline.replaceChildren(...steps.slice(-30).map((step, index, shown) => {
+    const item = element("li", "timeline-step");
+    const time = element("time", "timeline-time", new Date(step.at).toLocaleTimeString("en-GB"));
+    time.dateTime = step.at;
+    const duration = stepDuration(step, shown[index + 1]?.at ?? focus?.finishedAt);
+    item.dataset.outcome = step.outcome ?? "";
+    item.append(time, element("strong", "", `${ACTIVITY[step.activity]?.label ?? label(step.state)}${step.outcome ? ` · ${step.outcome}` : ""} · ${duration}`), element("span", "timeline-detail", step.detail));
+    return item;
+  }));
+  if (!steps.length) timeline.append(element("li", "empty", "Select an agent to inspect its workflow."));
+  (document.getElementById("timelineSummary") as HTMLElement).textContent = focus
+    ? `${label(focus.state)} · ${steps.length + (focus.historyTruncated ?? 0)} steps${steps.length > 30 || focus.historyTruncated ? " · latest 30" : ""}` : "No run selected";
+  const roleFor = (run: Run): string => displayWorkRole(run, sessions.length === 1 && sessions[0]?.id === run.id);
+  (document.getElementById("teamSection") as HTMLElement).hidden = !mirrorOnly;
+  const teamList = document.getElementById("teamList") as HTMLElement;
+  const latestSessions = new Map(runs.filter((run) => run.sessionId).map((run) => [run.sessionId, run]));
+  teamList.replaceChildren(...delegationRows(sessions).map(({run,depth}) => {
+    const parent = latestSessions.get(run.parentSessionId);
+    const item = element("li", "team-item");
+    item.style.marginLeft = `${Math.min(depth, 6) * 12}px`;
+    const choose = element("button", "team-select", `${run.parentSessionId ? "↳ " : "● "}${roleFor(run)} · ${short(run.prompt, 40)}`);
+    choose.type = "button";
+    choose.dataset.focusKey = `team:${run.id}`;
+    choose.onclick = () => selectAgent(run.id);
+    item.append(choose, element("span", "team-parent", run.parentSessionId
+      ? `Delegated by ${parent ? `${displayWorkRole(parent, false)} · ${short(parent.prompt, 32)}` : "parent session (not on this floor)"}`
+      : "Main session"));
+    return item;
+  }));
+  if (!sessions.length) teamList.append(element("li", "empty", "No active agents."));
   (document.getElementById("focusSection") as HTMLElement).hidden = !mirrorOnly;
   (document.getElementById("activityTracker") as HTMLElement).hidden = !mirrorOnly;
   if (mirrorOnly) {
     (document.getElementById("focusStation") as HTMLElement).textContent = focus ? activityOf(focus).station : "Standby";
     (document.getElementById("focusRole") as HTMLElement).textContent = focus ? `Agent ${roleFor(focus)} · ${activityOf(focus).persona}` : "OpenCode agent";
+    if (focus) {
+      const source = resolveWorkRole(focus, sessions.length === 1 && sessions[0]?.id === focus.id).source;
+      (document.getElementById("focusRole") as HTMLElement).textContent += source === "inferred" ? " · inferred role" : source === "single-agent" ? " · single-agent role" : "";
+    }
     (document.getElementById("focusTask") as HTMLElement).textContent = focus?.prompt || "Waiting for a session";
     (document.getElementById("focusActivity") as HTMLElement).textContent = focus ? activityOf(focus).label : "No activity yet";
     (document.getElementById("focusDetail") as HTMLElement).textContent = focus?.detail || "Start working on a feature in OpenCode.";
+    const tools = document.getElementById("activeTools") as HTMLElement;
+    tools.replaceChildren(...(focus?.activeTools ?? []).map((tool) => element("li", "tool-item", `${tool.name} · ${tool.detail}`)));
+    tools.hidden = !focus?.activeTools?.length;
     const activeModes = new Set(sessions.map((run) => {
       if (run.activity === "code-search") return "reading";
       if (run.activity === "working") return "editing";
@@ -178,6 +260,7 @@ function renderPanels(): void {
       if (run.activity === "approval") return "approval";
       return run.activity;
     }));
+    for (const run of sessions) for (const tool of run.activeTools ?? []) activeModes.add(tool.activity === "code-search" ? "reading" : tool.activity === "delegating" ? "thinking" : tool.activity);
     document.querySelectorAll<HTMLElement>(".activity-chip").forEach((chip) => {
       chip.dataset.active = activeModes.has(chip.dataset.activity) ? "true" : "false";
     });
@@ -194,6 +277,7 @@ function renderPanels(): void {
   const roomSlots = office.rooms.length <= 5 ? office.rooms.length + 1 : office.rooms.length;
   const floorHeight = mirrorOnly ? geometry.height : Math.max(560, 124 + Math.ceil(roomSlots / 3) * 218);
   if (canvas.height !== floorHeight) canvas.height = floorHeight;
+  camera.updateSize();
 
   const activityNodes = [...runs].reverse().slice(0, 5).map((run) => {
     const item = element("li", "activity-item");
@@ -201,6 +285,14 @@ function renderPanels(): void {
     const top = element("div", "activity-top");
     top.append(element("span", "activity-role", mirrorOnly ? roleFor(run) : run.role), element("span", "run-state", mirrorOnly ? activityOf(run).label : label(run.state)));
     item.append(top, element("p", "activity-prompt", short(run.prompt, 120) || run.id));
+    if (mirrorOnly) {
+      const inspect = element("button", "inspect-button", "Inspect agent");
+      inspect.type = "button";
+      inspect.dataset.focusKey = `history:${run.id}`;
+      inspect.setAttribute("aria-pressed", String(focus?.id === run.id));
+      inspect.onclick = () => selectAgent(run.id);
+      item.append(inspect);
+    }
     if (mirrorOnly && run.detail) item.append(element("p", "activity-detail", short(run.detail, 100)));
     return item;
   });
@@ -218,17 +310,25 @@ function renderPanels(): void {
       const workRole = roleFor(run);
       const card = element("li", "crew-card");
       card.dataset.state = run.state;
+      card.dataset.selected = String(focus?.id === run.id);
       card.style.setProperty("--room-color", activityOf(run).color);
       const avatar = element("span", "crew-avatar");
       const portrait = document.createElement("canvas");
       portrait.width = 30; portrait.height = 35;
       const portraitCtx = portrait.getContext("2d");
-      if (portraitCtx) drawSprite(portraitCtx, CHAR_FRAMES.idle, agentPalette(workRole, run.sessionId ?? run.id), 3, 3, 2);
+      if (portraitCtx) drawSprite(portraitCtx, avatarFrame(run.sessionId ?? run.id, CHAR_FRAMES.idle), agentPalette(workRole, run.sessionId ?? run.id), 3, 3, 2);
       avatar.append(portrait);
       const copy = element("div", "crew-copy");
       copy.append(element("span", "crew-name", workRole), element("span", "crew-meta", short(`${run.role} · ${run.prompt}`, 36)),
         element("span", "crew-status", activityOf(run).label));
-      card.append(avatar, copy);
+      const choose = element("button", "crew-select");
+      choose.type = "button";
+      choose.dataset.focusKey = `crew:${run.id}`;
+      choose.setAttribute("aria-label", `Inspect ${workRole}: ${run.prompt}`);
+      choose.setAttribute("aria-pressed", String(focus?.id === run.id));
+      choose.onclick = () => selectAgent(run.id);
+      choose.append(avatar, copy);
+      card.append(choose);
       return card;
     }));
   } else crewUl.replaceChildren(...office.desks.map((desk) => {
@@ -256,10 +356,16 @@ function renderPanels(): void {
     card.append(avatar, copy);
     return card;
   }));
+  if (focusedKey) {
+    const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>("[data-focus-key]"));
+    const nextFocus = buttons.find((node) => node.dataset.focusKey === focusedKey)
+      ?? buttons.find((node) => node.dataset.focusKey === focusedKey.replace(/^crew:/, "history:"));
+    nextFocus?.focus({preventScroll:true});
+  }
 }
 
 async function fetchJson<T>(path: string): Promise<T> {
-  const response = await fetch(path, { cache: "no-store" });
+  const response = await fetch(path, { cache: "no-store", signal: AbortSignal.timeout(3000) });
   if (!response.ok) throw new Error(`${path}: HTTP ${response.status}`);
   return response.json() as Promise<T>;
 }
@@ -272,11 +378,12 @@ async function snapshot(): Promise<void> {
     while (refreshPending) {
       refreshPending = false;
       try {
-        const [officeData, runsData, queueData, budgetData] = await Promise.all([
+        const [officeData, runsData, queueData, budgetData, serverHealth] = await Promise.all([
           fetchJson<{ office: OfficeDoc; occupants: Record<string, string>; mirrorOnly?: boolean }>("/api/office"),
           fetchJson<{ runs: Run[] }>("/api/runs"),
           fetchJson<{ queue: QueueItem[] }>("/api/queue"),
           fetchJson<{ spentEstimated: number }>("/api/budgets"),
+          fetchJson<typeof healthInfo>("/api/health"),
         ]);
         office = officeData.office;
         occupants = officeData.occupants;
@@ -285,11 +392,15 @@ async function snapshot(): Promise<void> {
         queue = queueData.queue;
         spentEstimated = Number.isFinite(budgetData.spentEstimated) ? budgetData.spentEstimated : 0;
         latestFetchOkay = true;
+        healthAttempted = true; serverAvailable = true; healthInfo = serverHealth; lastSnapshotAt = Date.now();
         if (retryTimer !== undefined) { window.clearTimeout(retryTimer); retryTimer = undefined; }
         renderPanels();
         draw();
       } catch {
         latestFetchOkay = false;
+        healthAttempted = true;
+        try { healthInfo = await fetchJson<typeof healthInfo>("/api/health"); serverAvailable = true; }
+        catch { serverAvailable = false; }
         (document.getElementById("lastSync") as HTMLElement).textContent = "Data has not refreshed";
         if (retryTimer === undefined) {
           retryTimer = window.setTimeout(() => { retryTimer = undefined; void snapshot(); }, 3000);
@@ -836,6 +947,10 @@ function drawOfficeAgents(sessions: Run[], tick: number, now: number): void {
     const activity = activityOf(run);
     const workRole = displayWorkRole(run, sessions.length === 1);
     const palette = agentPalette(workRole, id);
+    if (run.id === selectedRunId) {
+      ctx.strokeStyle = theme.ui.sage; ctx.lineWidth = 2;
+      ctx.strokeRect(x - 5, y - 3, 46, 48);
+    }
     if (computer) {
       ctx.fillStyle = tick % 2 === 0 ? "#b5fff0" : "#67dccb";
       ctx.fillRect(computer[0] + 18, computer[1] - 8, 13, 2);
@@ -850,7 +965,7 @@ function drawOfficeAgents(sessions: Run[], tick: number, now: number): void {
     const frame = !arrived ? WALK_FRAMES[agent.direction][Math.floor(now / 90) % 8]
       : CHAR_FRAMES[station === "thinking" || station === "delegating" ? (tick % 2 === 0 ? "talkA" : "talkB")
         : seated ? (tick % 2 === 0 ? "typeA" : "typeB") : frameForState(run.state, tick)];
-    drawSprite(ctx, frame, palette, x, y, scale);
+    drawSprite(ctx, avatarFrame(id, frame, !arrived ? agent.direction : seated && computer ? "north" : "south"), palette, x, y, scale);
     if (seated) drawOccupiedChair(x, y, scale, true);
     if (station === "reading" && arrived) {
       ctx.fillStyle = "#fff1df"; ctx.fillRect(x + 8, y + 27, 22, 14);
@@ -906,6 +1021,7 @@ function drawSessionFloor(tick: number, now: number): void {
   if (desiredHeight !== geometry.height) {
     geometry = studioGeometry(studioSeats, desiredHeight);
     canvas.height = desiredHeight;
+    camera.updateSize();
     studioDirty = true;
   }
   if (studioDirty || !backgroundCtx || studioBackground.width !== canvas.width || studioBackground.height !== canvas.height) {
@@ -937,6 +1053,17 @@ function drawSessionFloor(tick: number, now: number): void {
   }
   drawStudioDoors(now);
   drawOfficeAgents(sessions, tick, now);
+  if (showRelations) {
+    ctx.save(); ctx.strokeStyle = theme.ui.sage; ctx.globalAlpha = .55; ctx.setLineDash([4, 5]);
+    for (const child of sessions) {
+      const parent = sessions.find((run) => run.sessionId === child.parentSessionId);
+      if (!parent || (selectedRunId && child.id !== selectedRunId && parent.id !== selectedRunId)) continue;
+      const a = agentPositions.get(parent.sessionId ?? parent.id)?.point;
+      const b = agentPositions.get(child.sessionId ?? child.id)?.point;
+      if (a && b) { ctx.beginPath(); ctx.moveTo(a.x, a.y + 4); ctx.lineTo(b.x, b.y + 4); ctx.stroke(); }
+    }
+    ctx.restore();
+  }
   const primary = sessions[0];
   ctx.fillStyle = "#1b1d3b"; ctx.fillRect(42, 530, 872, 16);
   ctx.fillStyle = activityOf(primary).color; ctx.fillRect(42, 530, 5, 16);
@@ -966,6 +1093,7 @@ function draw(now = performance.now()): void {
 
 function scheduleAnimation(): void {
   if (reducedMotion || animationFrame !== undefined || document.visibilityState !== "visible") return;
+  if (mirrorOnly && (!streamReady || !latestFetchOkay || (healthInfo.leaseManaged && !healthInfo.activeLeases))) return;
   const active = mirrorOnly ? visibleAgents().length > 0 : runs.some((run) => run.state === "walking" || run.state === "delivering");
   if (!active) return;
   animationFrame = window.requestAnimationFrame((now) => {
@@ -985,13 +1113,16 @@ function connect(): void {
   source.onopen = () => { streamReady = true; renderConnection(); void snapshot(); };
   source.addEventListener("snapshot", () => { void snapshot(); });
   source.addEventListener("office", () => { void snapshot(); });
-  source.onerror = () => { streamReady = false; renderConnection(); };
+  source.onerror = () => { streamReady = false; renderConnection(); void snapshot(); };
 }
 
 updateStudioClock();
 window.setInterval(() => {
   if (document.visibilityState === "visible" && updateStudioClock()) draw();
 }, 15_000);
+window.setInterval(() => {
+  if (document.visibilityState === "visible") { renderConnection(); void snapshot(); }
+}, 10_000);
 draw();
 void snapshot();
 connect();
@@ -1001,5 +1132,5 @@ document.addEventListener("visibilitychange", () => {
   const now = performance.now();
   for (const agent of agentPositions.values()) agent.time = now;
   lastDoorTime = now;
-  if (document.visibilityState === "visible") { updateStudioClock(); draw(now); }
+  if (document.visibilityState === "visible") { updateStudioClock(); draw(now); void snapshot(); }
 });

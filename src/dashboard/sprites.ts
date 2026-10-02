@@ -81,7 +81,48 @@ export function agentPalette(role: string, identity: string): Palette {
   for (const char of identity) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
   const skins = ["#F2C19E", "#DCA77E", "#B98164", "#805B57", "#F7D7B4"];
   const hairs = ["#35253F", "#6A3F4B", "#A86350", "#27283D", "#D8A066"];
-  return { ...shirtPalette(role), S: skins[hash % skins.length], H: hairs[(hash >>> 3) % hairs.length] };
+  return { ...shirtPalette(role), S: skins[hash % skins.length], H: hairs[(hash >>> 3) % hairs.length],
+    A: "#81E8DA", L: "#F7E7D5", J: "#53577D" };
+}
+
+export const AVATAR_STYLES = ["Crop", "Bob", "Curls", "Ponytail", "Bun", "Side part",
+  "Glasses", "Headset", "Beard", "Cardigan", "Hoodie", "Vest"] as const;
+const avatarCache = new WeakMap<PixelMap, Map<string, PixelMap>>();
+
+/** Keep the same model for a session across poses; never change the foot anchor. */
+export function avatarFrame(identity: string, base: PixelMap, direction: "north" | "south" | "east" | "west" = "south", model?: number): PixelMap {
+  let hash = 2166136261;
+  for (const char of identity) hash = Math.imul(hash ^ char.charCodeAt(0), 16777619) >>> 0;
+  const style = model ?? hash % AVATAR_STYLES.length;
+  const key = `${style}:${direction}`;
+  let poses = avatarCache.get(base);
+  if (!poses) { poses = new Map(); avatarCache.set(base, poses); }
+  const cached = poses.get(key);
+  if (cached) return cached;
+  const west = direction === "west";
+  const pixels = base.map((row) => [...(west ? [...row].reverse().join("") : row)]);
+  const side = direction === "east" || west;
+  const face = direction !== "north";
+  const put = (x: number, y: number, color: string) => { pixels[y][x] = color; };
+  if (style === 0) { for (let x = 4; x < 8; x++) put(x, 2, "S"); }
+  if (style === 1) { for (const x of [2, side ? 4 : 9]) for (let y = 3; y <= 6; y++) put(x, y, "H"); }
+  if (style === 2) { for (const x of [3, 5, 7, 8]) put(x, 0, "H"); put(2, 2, "H"); put(9, 2, "H"); }
+  if (style === 3) { for (let y = 3; y <= 7; y++) put(side ? 2 : 9, y, "H"); put(side ? 2 : 9, 4, "A"); }
+  if (style === 4) { put(5, 0, "H"); put(6, 0, "H"); put(5, 1, "A"); }
+  if (style === 5) { put(4, 3, "H"); put(5, 3, "H"); put(6, 2, "S"); }
+  if (style === 6 && face) { for (let x = side ? 7 : 3; x <= 8; x++) put(x, 4, x === 5 || x === 6 ? "O" : "A"); }
+  if (style === 7) { for (let x = 3; x <= 8; x++) put(x, 1, "J"); put(2, 3, "A"); put(side ? 4 : 9, 3, "A"); if (face) put(8, 5, "J"); }
+  if (style === 8 && face) { for (let x = side ? 6 : 4; x <= 7; x++) put(x, 5, "H"); }
+  for (let y = 6; y <= 9; y++) for (let x = 2; x <= 9; x++) {
+    if (pixels[y][x] !== "C") continue;
+    if (style === 9 && (x <= 3 || x >= 8)) put(x, y, "J");
+    if (style === 10 && y === 6) put(x, y, "L");
+    if (style === 11 && (x === 5 || x === 6)) put(x, y, "J");
+  }
+  if (style === 10) { put(side ? 5 : 4, 7, "L"); put(side ? 7 : 7, 7, "L"); }
+  const result = pixels.map((row) => west ? row.reverse().join("") : row.join(""));
+  poses.set(key, result);
+  return result;
 }
 
 const HEAD: PixelMap = [

@@ -36,9 +36,49 @@ async function mirror(p: string, body: unknown): Promise<{ status: number; json:
 }
 
 describe("mirror api", () => {
+  it("bounds long workflows while retaining the newest actions and completion", async () => {
+    await mirror("/api/mirror/session",{sessionId:"long-workflow",prompt:"Long workflow"});
+    for (let i=0;i<105;i++) await mirror("/api/mirror/event",{sessionId:"long-workflow",state:"acting",activity:"reading",detail:`Reading file ${i}`});
+    const result=await mirror("/api/mirror/finish",{sessionId:"long-workflow",outcome:"done"});
+    const run=result.json["run"] as {timeline:{detail:string;activity:string}[];historyTruncated:number};
+    assert.equal(run.timeline.length,100);
+    assert.equal(run.historyTruncated,7);
+    assert.equal(run.timeline[0].detail,"Reading file 6");
+    assert.equal(run.timeline[99].activity,"done");
+  });
+  it("validates parallel tool metadata and clears tools on completion", async () => {
+    await mirror("/api/mirror/session", {sessionId:"tool-api",prompt:"Tool metadata"});
+    assert.equal((await mirror("/api/mirror/event",{sessionId:"tool-api",state:"acting",activeTools:[42]})).status,400);
+    assert.equal((await mirror("/api/mirror/event",{sessionId:"tool-api",state:"acting",toolResult:{outcome:"invented"}})).status,400);
+    const tool={id:"call-a",name:"read",activity:"reading",detail:"Reading a.ts"};
+    const update=await mirror("/api/mirror/event",{sessionId:"tool-api",state:"acting",activity:"reading",activeTools:[tool]});
+    assert.deepEqual((update.json["run"] as {activeTools:unknown[]}).activeTools,[tool]);
+    const finished=await mirror("/api/mirror/finish",{sessionId:"tool-api",outcome:"done"});
+    assert.deepEqual((finished.json["run"] as {activeTools:unknown[]}).activeTools,[]);
+  });
+  it("keeps timestamped tool history after completion without duplicate idle snapshots", async () => {
+    await mirror("/api/mirror/session", { sessionId: "timeline-api", prompt: "Timeline feature" });
+    await mirror("/api/mirror/event", { sessionId: "timeline-api", state: "acting", activity: "reading", detail: "Reading app.ts" });
+    await mirror("/api/mirror/event", { sessionId: "timeline-api", state: "acting", activity: "reading", detail: "Reading app.ts" });
+    await mirror("/api/mirror/event", { sessionId: "timeline-api", state: "acting", activity: "editing", detail: "Editing app.ts" });
+    const result = await mirror("/api/mirror/finish", { sessionId: "timeline-api", outcome: "done" });
+    const run = result.json["run"] as { startedAt?: string; finishedAt?: string; timeline?: { at: string; activity: string }[] };
+    assert.deepEqual(run.timeline?.map((entry) => entry.activity), ["arriving", "reading", "editing", "done"]);
+    assert.ok(Number.isFinite(Date.parse(run.startedAt ?? "")));
+    assert.ok(Date.parse(run.finishedAt ?? "") >= Date.parse(run.startedAt ?? ""));
+    assert.ok(run.timeline?.every((entry) => Number.isFinite(Date.parse(entry.at))));
+  });
+  it("preserves real parent session metadata across registration updates", async () => {
+    const reg = await mirror("/api/mirror/session", { sessionId: "child-meta", parentSessionId: "parent-meta", role: "qa-engineer", prompt: "Verify feature" });
+    assert.equal((reg.json["run"] as { parentSessionId?: string }).parentSessionId, "parent-meta");
+    const update = await mirror("/api/mirror/session", { sessionId: "child-meta", prompt: "Updated title" });
+    assert.equal((update.json["run"] as { parentSessionId?: string }).parentSessionId, "parent-meta");
+    assert.equal((await mirror("/api/mirror/session", { sessionId: "invalid-parent", parentSessionId: 42 })).status, 400);
+  });
   it("registers, streams, and finishes an opencode session", async () => {
     const reg = await mirror("/api/mirror/session", { sessionId: "ses-a", role: "build", prompt: "make x" });
     assert.equal(reg.status, 201);
+    assert.ok(Number.isFinite(Date.parse((await (await fetch(`${base}/api/health`)).json()).lastEventAt)));
     assert.equal((reg.json["run"] as { detail: string }).detail, "Setting up workspace");
     const deskId = (reg.json["run"] as { deskId: string }).deskId;
     assert.ok(deskId);

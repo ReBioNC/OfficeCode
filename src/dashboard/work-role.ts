@@ -26,27 +26,31 @@ function explicitRole(name: string): string | undefined {
 
 function taskRole(value: string): string | undefined {
   const text = value.toLowerCase();
-  if (/audit|review|security|keamanan|kerentanan/.test(text)) return "Auditor";
-  if (/\bqa\b|\btest|uji|pengujian/.test(text)) return "QA";
-  if (/ui\/ux|desain|design|wireframe|figma/.test(text)) return "UI/UX";
-  const front = /frontend|front.?end|antarmuka|komponen|component|\.tsx?\b|\.jsx?\b|\bcss\b|\bhtml\b|\breact\b|\bvue\b|\bsvelte\b/.test(text);
-  const back = /backend|back.?end|server|endpoint|route|\bapi\b|database|query|\bsql\b/.test(text);
+  if (/\b(audit|auditing|review|reviewing|security|keamanan|kerentanan)\b/.test(text)) return "Auditor";
+  if (/\b(qa|test|tests|testing|tester|uji|pengujian)\b/.test(text)) return "QA";
+  if (/ui\/ux|\b(desain|design|wireframe|figma)\b/.test(text)) return "UI/UX";
+  const front = /\b(frontend|front.?end|antarmuka|komponen|components?|css|html|react|vue|svelte)\b|\.(tsx|jsx)\b/.test(text);
+  const back = /\b(backend|back.?end|server|endpoints?|routes?|api|database|query|sql)\b/.test(text);
   if (front && back) return "Fullstack";
   if (front) return "Frontend";
   if (back) return "Backend";
-  if (/deploy|pipeline|docker|infra|\bci\b/.test(text)) return "DevOps";
-  if (/readme|dokumentasi|documentation|\bdocs\b/.test(text)) return "Documentation";
-  if (/riset|research|referensi|mencari di web/.test(text)) return "Researcher";
+  if (/\b(deploy|deployment|pipeline|docker|infra|infrastructure|ci)\b/.test(text)) return "DevOps";
+  if (/\b(readme|dokumentasi|documentation|docs)\b/.test(text)) return "Documentation";
+  if (/\b(riset|research|referensi)\b|mencari di web/.test(text)) return "Researcher";
   return undefined;
 }
 
-export function displayWorkRole(run: WorkRoleSource, singleVisibleAgent: boolean): string {
-  if (singleVisibleAgent) return "Fullstack";
+export function resolveWorkRole(run: WorkRoleSource, singleVisibleAgent: boolean): { label: string; source: "explicit" | "inferred" | "single-agent" | "default" } {
   const agentRole = explicitRole(run.role);
-  if (agentRole) return agentRole;
-  const task = taskRole(run.prompt) ?? taskRole(run.detail ?? "");
-  if (task) return task;
+  if (agentRole) return { label: agentRole, source: "explicit" };
   const raw = run.role.trim();
-  if (!raw || GENERIC_AGENTS.has(raw.toLowerCase())) return "Developer";
-  return raw.replace(/[_-]/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+  if (raw && !GENERIC_AGENTS.has(raw.toLowerCase())) return { label: raw.replace(/[_-]/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase()), source: "explicit" };
+  if (singleVisibleAgent) return { label: "Fullstack", source: "single-agent" };
+  const task = taskRole(run.prompt) ?? taskRole(run.detail ?? "");
+  if (task) return { label: task, source: "inferred" };
+  return { label: "Developer", source: "default" };
+}
+
+export function displayWorkRole(run: WorkRoleSource, singleVisibleAgent: boolean): string {
+  return resolveWorkRole(run, singleVisibleAgent).label;
 }

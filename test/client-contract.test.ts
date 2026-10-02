@@ -16,7 +16,7 @@ describe("dashboard visual-only contract", () => {
     for (const route of ["/api/office", "/api/runs", "/api/queue", "/api/budgets"]) {
       assert.ok(src.includes(`"${route}"`), `loads ${route}`);
     }
-    assert.ok(src.includes("fetch(path, { cache: \"no-store\" })"), "reads fresh API state");
+    assert.ok(src.includes('cache: "no-store"'), "reads fresh API state");
     assert.ok(!src.includes('"PUT"'), "no PUT from dashboard");
     assert.ok(!src.includes('method: "POST"'), "no POST from dashboard");
     assert.ok(!src.includes("<form"), "no forms in dashboard code");
@@ -24,7 +24,6 @@ describe("dashboard visual-only contract", () => {
   it("has no forms in markup", () => {
     const html = fs.readFileSync("src/dashboard/index.html", "utf8");
     assert.ok(!html.includes("<form"), "sidebar has no forms");
-    assert.ok(!html.includes("<button"), "sidebar has no buttons");
     assert.ok(!html.includes("<input"), "sidebar has no inputs");
   });
   it("shows role pills and status bubbles in the studio", () => {

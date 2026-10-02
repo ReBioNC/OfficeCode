@@ -11,6 +11,7 @@ import { RUN_STATES, type RunState } from "../shared/events.js";
 import { enqueueOrRun, pendingList, pumpQueue } from "./queue.js";
 import { loadBudgets, saveBudgets, spentToday, overBudget, settleSpend, type BudgetsDoc } from "./budgets.js";
 import { loadModels as loadModelSlots } from "./models.js";
+import type { ActiveTool, ToolResult } from "../shared/run-history.js";
 
 const PUBLIC_DIR = path.join(process.env["OFFICECODE_ROOT"] ?? path.resolve(__dirname, "..", "..", ".."), "dashboard", "public");
 
@@ -32,6 +33,12 @@ function contentType(file: string): string {
   return "application/octet-stream";
 }
 
+function validTool(value: unknown): value is ActiveTool {
+  if (!value || typeof value !== "object") return false;
+  const tool = value as Record<string, unknown>;
+  return (["id", "name", "activity", "detail"] as const).every((key) => typeof tool[key] === "string" && (tool[key] as string).length <= 200);
+}
+
 export async function startServer(workspaceDir: string, port: number, options: { lease?: LeaseOptions } = {}): Promise<{
   server: http.Server;
   close: () => Promise<void>;
@@ -45,6 +52,7 @@ export async function startServer(workspaceDir: string, port: number, options: {
   let hadLease = false;
   let leaseTimer: NodeJS.Timeout | undefined;
   let closing = false;
+  let lastEventAt: string | null = null;
 
   const sweepLeases = () => {
     if (!leaseManaged || closing) return;
@@ -65,7 +73,7 @@ export async function startServer(workspaceDir: string, port: number, options: {
     const line = `event: office\ndata: ${JSON.stringify(payload)}\n\n`;
     for (const res of clients) res.write(line);
   };
-  setOnRunUpdate((run) => broadcast({ runId: run.id, state: run.state }));
+  setOnRunUpdate((run) => { lastEventAt = new Date().toISOString(); broadcast({ runId: run.id, state: run.state }); });
   setOnSettled(() => {
     void pumpQueue(store, workspaceDir, () => selectDriver(process.env as Record<string, string>))
       .then(() => broadcast({ queueUpdated: true }));
@@ -74,7 +82,8 @@ export async function startServer(workspaceDir: string, port: number, options: {
   const server = http.createServer((req, res) => {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
     if (req.method === "GET" && url.pathname === "/api/health") {
-      sendJson(res, 200, { ok: true, version: 1, service: "officecode", workspace: path.resolve(workspaceDir), mirrorOnly: process.env["OFFICECODE_MIRROR_ONLY"] === "1", leaseManaged, pid: process.pid });
+      sendJson(res, 200, { ok: true, version: 1, service: "officecode", workspace: path.resolve(workspaceDir), mirrorOnly: process.env["OFFICECODE_MIRROR_ONLY"] === "1", leaseManaged, pid: process.pid,
+        activeLeases: [...leases.values()].filter((seen) => Date.now() - seen <= leaseOptions.ttlMs).length, lastEventAt });
       return;
     }
     if (url.pathname === "/api/lease" && (req.method === "POST" || req.method === "DELETE")) {
@@ -239,24 +248,36 @@ export async function startServer(workspaceDir: string, port: number, options: {
         void (async () => {
           try {
             const input = JSON.parse(body) as {
-              sessionId?: string; role?: string; prompt?: string;
+              sessionId?: string; role?: string; prompt?: string; parentSessionId?: string;
               state?: string; message?: string; outcome?: string; activity?: string; detail?: string;
+              activeTools?: ActiveTool[]; toolResult?: ToolResult;
             };
             if (!input.sessionId) {
               sendJson(res, 400, { error: "sessionId required" });
               return;
             }
             if (url.pathname === "/api/mirror/session") {
+              if (input.parentSessionId !== undefined && (typeof input.parentSessionId !== "string" || input.parentSessionId.length > 200 || input.parentSessionId === input.sessionId)) {
+                sendJson(res, 400, { error: "invalid parentSessionId" }); return;
+              }
               const run = await registerMirrorRun(store, workspaceDir, {
                 sessionId: input.sessionId,
                 role: input.role ?? "opencode",
                 prompt: input.prompt ?? "opencode session",
+                parentSessionId: input.parentSessionId,
               });
               broadcast({ runId: run.id, state: run.state });
               sendJson(res, 201, { run });
               return;
             }
             if (url.pathname === "/api/mirror/event") {
+              if (input.activeTools !== undefined && (!Array.isArray(input.activeTools) || input.activeTools.length > 64 || !input.activeTools.every(validTool))) {
+                sendJson(res, 400, { error: "invalid activeTools" }); return;
+              }
+              if (input.toolResult !== undefined && (!validTool(input.toolResult) || !["completed", "error"].includes(input.toolResult.outcome)
+                || (input.toolResult.durationMs !== undefined && (!Number.isFinite(input.toolResult.durationMs) || input.toolResult.durationMs < 0)))) {
+                sendJson(res, 400, { error: "invalid toolResult" }); return;
+              }
               if (!input.state || !(RUN_STATES as readonly string[]).includes(input.state) || input.state === "off-duty") {
                 sendJson(res, 400, { error: `state must be one of: ${(RUN_STATES as readonly string[]).filter((s) => s !== "off-duty").join(", ")}` });
                 return;
@@ -268,6 +289,8 @@ export async function startServer(workspaceDir: string, port: number, options: {
                 role: input.role,
                 activity: input.activity,
                 detail: input.detail,
+                activeTools: input.activeTools,
+                toolResult: input.toolResult,
               });
               broadcast({ runId: run.id, state: run.state });
               sendJson(res, 200, { run });

@@ -1,7 +1,9 @@
-# Privasi dan penyimpanan lokal
+# Privacy and local storage
 
-OfficeCode hanya mendengarkan `127.0.0.1`. Plugin global memantulkan metadata sesi OpenCode, seperti judul sesi, nama tool, status kerja, dan permintaan izin, ke server dashboard lokal. Data dashboard dan log aktivitas disimpan per proyek di `%LOCALAPPDATA%\OfficeCode\projects\` pada Windows atau `~/.local/share/OfficeCode/projects/` pada macOS/Linux. Judul sesi atau metadata tool dapat memuat informasi sensitif; periksa data tersebut sebelum membagikannya.
+OfficeCode listens only on `127.0.0.1`. The global plugin mirrors OpenCode session metadata, including titles, agent roles, parent session IDs, tool names and call IDs, activity targets, completion status, and permission waits, to the local dashboard. Project data and activity logs are stored under `%LOCALAPPDATA%\OfficeCode\projects\` on Windows or `~/.local/share/OfficeCode/projects/` on macOS/Linux. Session titles and tool metadata may contain sensitive information; review them before sharing.
 
-Dashboard browser tidak menyimpan API key dan tidak memanggil provider model. Dalam mode plugin global, model tetap dipilih dan dijalankan oleh OpenCode; endpoint dispatch mandiri dinonaktifkan. Proses lokal lain pada komputer yang sama dapat mengakses server HTTP lokal selama dashboard berjalan, sehingga jangan mengekspos port itu ke jaringan publik.
+Detailed workflow timelines and concurrent tool lists are held in server memory. Each run's timeline keeps its latest 100 entries; it is not restored after the server stops. Existing event ledgers and transcripts remain on disk. The dashboard does not copy model reasoning or tool output into its new timeline.
 
-Mode pengembangan manual (`npm run dev`) terpisah. Mode ini menyimpan state di `<workspace>/.officecode/` dan hasil run di `<workspace>/output/outbox/`. Jika driver mock digunakan, tidak ada panggilan model. Tanpa driver mock, API run manual dapat menjalankan OpenCode CLI dan mengikuti konfigurasi provider OpenCode pengguna.
+The browser does not store API keys or call model providers. In global plugin mode, OpenCode selects and runs every model; standalone dispatch is disabled. Avatar rendering, navigation, role labels, connection checks, and themes make no model calls. Other local processes can access the HTTP server while it is running; do not expose its port to a public network.
+
+Manual development mode (`npm run dev`) is separate. It stores state in `<workspace>/.officecode/` and run results in `<workspace>/output/outbox/`. The mock driver makes no model calls. Without the mock driver, the development run API can invoke the OpenCode CLI with the user's OpenCode provider configuration.
