@@ -60,9 +60,9 @@ describe("office routes", () => {
   });
   it("connects studio seats through doors without intersecting furniture or partitions", () => {
     const seats = [
-      { x: 237, y: 429 }, { x: 375, y: 442 }, { x: 104, y: 422 },
-      { x: 479, y: 487 }, { x: 291, y: 505 }, { x: 117, y: 514 },
-      { x: 356, y: 269 }, { x: 704, y: 272 }, { x: 838, y: 266 }, { x: 770, y: 511 },
+      { x: 181, y: 644 }, { x: 391, y: 644 }, { x: 601, y: 644 },
+      { x: 181, y: 780 }, { x: 391, y: 780 }, { x: 601, y: 780 },
+      { x: 530, y: 380 }, { x: 130, y: 360 }, { x: 947, y: 342 }, { x: 1072, y: 946 },
     ];
     for (const from of seats) for (const to of seats.slice(6)) {
       const route = planRoute(from, to, STUDIO_OBSTACLES);
