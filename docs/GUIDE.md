@@ -144,7 +144,19 @@ Walking uses eight poses in each of four directions and a fixed speed based on e
 
 All active OpenCode sessions share one pixel-art studio. Its original night palette, sunset skyline, colorful work rugs, idea corner, planning atelier, digital library, workstations, and coffee area are drawn in code. Desks have distinct monitors and keyboards. Each visible agent moves to the relevant station as OpenCode reports work: planning, reading files, editing code, searching the web or codebase, running terminal commands, coordinating tools, and waiting for permission. Agents sit at their computers with alternating typing poses for workstation activity. During planning they sit at the meeting table, gesture, and show their actual OpenCode activity in speech bubbles; a coordination cue appears when one of the agents is delegating. Partitions separate the work areas, and sliding doors open as agents approach. Agents take horizontal and vertical routes through these doorways and avoid furniture. Movement between stations is animated and respects reduced-motion settings. Agents have stable, varied skin and hair colors while their shirt color follows their displayed work role. The sidebar shows each agent's work role, task title, and latest action. Agents disappear from the floor and crew deck as soon as their task finishes. Their activity history remains in the sidebar, and the next prompt starts a new visible turn.
 
-These states come from OpenCode session, message, tool, and permission events. The dashboard labels a single visible agent **Fullstack**. With multiple agents, it uses explicit OpenCode agent roles where available and otherwise infers a work role from the task text (for example Frontend, Backend, Auditor, or QA). The original OpenCode agent name remains in the agent card. These labels describe the visualization and do not assign a new OpenCode agent. The plugin does not make extra model requests for animation or role labels.
+These states come from OpenCode session, message, tool, and permission events. Explicit roles and custom agent names take priority. A single generic agent is displayed as **Fullstack**. With multiple generic agents, the dashboard may infer a work role from task text (for example Frontend, Backend, Auditor, or QA); the inspector marks these as **inferred role**. The original OpenCode agent name remains in the agent card. These labels describe the visualization and do not assign a new OpenCode agent. The plugin does not make extra model requests for animation or role labels.
+
+### Inspect and navigate
+
+- Click a character, crew card, delegation entry, or **Inspect agent** in Recent activity to select a run. Buttons also support keyboard navigation. Selection remains inspectable after the run completes; completed characters stay off the floor.
+- **Current work** shows the selected run's title, role, activity, and tool target. **Active tools** lists concurrent calls. Finishing one call does not return the agent to Thinking while other calls are running. Permission waits stay visible until OpenCode replies.
+- **Delegation** groups real parent/subagent relationships from OpenCode. Select an agent to see its links on the floor. A parent that is not active on this floor is identified in the list. Relationships are never guessed from task titles.
+- **Workflow timeline** shows activity times, elapsed durations, completed/failed tool results, and the final session status. Expand or collapse it as needed. Each run retains its latest 100 steps; the inspector displays the latest 30 and identifies truncated history. This detailed timeline is in memory until the server stops, not a persistent replay or a copy of model reasoning.
+- **Fit studio** fits the entire office, including extra desks. **Focus agent** zooms to the selected active character. Use +/−, drag to pan, two-finger pinch to zoom, or Ctrl+wheel on desktop. The view controls never dispatch work.
+- Twelve avatar models add haircuts, glasses, headsets, beards, and outfit variations across walking, typing, and planning poses. The model, skin, and hair stay consistent per session; shirt color follows the displayed role.
+- Connection status distinguishes idle OpenCode, active work, a reconnecting feed, stale data, and an unavailable server. **Last event** reports the latest run update. Quiet idle sessions are valid. Health and snapshots refresh every 10 seconds while visible; animations pause without a connected feed and respect reduced motion.
+
+After updating these features, run `npm run install:opencode` from the checkout, close all OpenCode instances, reopen OpenCode, and hard-refresh the dashboard. New plugin hooks only load after restarting OpenCode.
 
 The dashboard stops when OpenCode closes. If OpenCode exits unexpectedly, its lease expires and the dashboard normally stops about 7–8 seconds after the last heartbeat. If another OpenCode window is still using the same project, the dashboard stays online until the last window closes.
 
@@ -154,15 +166,17 @@ The server listens on localhost. Status messages and generated activity details 
 
 | Endpoint | Behavior |
 |---|---|
-| `GET /api/health` | Service identity, workspace, and health |
+| `GET /api/health` | Service identity, workspace, health, `activeLeases`, and `lastEventAt` |
 | `GET /api/office` | Office layout, occupants, and mirror mode |
-| `GET /api/runs`, `GET /api/runs/:id` | Run history or details |
+| `GET /api/runs`, `GET /api/runs/:id` | Run details, parent session, concurrent tools, start/finish times, and latest 100 timeline steps |
 | `POST /api/runs` | Dispatch a run in development mode; global plugin mode returns `403` with an English message directing users to start tasks in OpenCode |
 | `GET /api/queue` | Waiting tasks |
 | `GET/PUT /api/models` | Model slots; PUT replaces the whole configuration |
 | `GET /api/models/opencode` | Best-effort workspace OpenCode model configuration |
 | `GET/PUT /api/budgets` | Budget configuration and estimated spend (`est.`) |
-| `POST /api/mirror/session`, `/api/mirror/event`, `/api/mirror/finish` | Mirror OpenCode session activity and completion |
+| `POST /api/mirror/session` | Register/update a session; optional `parentSessionId` links real delegations |
+| `POST /api/mirror/event` | Mirror activity; optional `activeTools` (up to 64 entries) and `toolResult` (`completed`/`error`, optional `durationMs`) |
+| `POST /api/mirror/finish` | Mark a session done/blocked and clear its active tools |
 | `GET /api/events` | Server-sent events for dashboard updates |
 
 ## File locations

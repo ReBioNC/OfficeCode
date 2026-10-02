@@ -2,6 +2,8 @@
 
 A global [OpenCode](https://opencode.ai/) plugin that visualizes agents and tool activity in a live pixel-art office. Themes follow your local clock. OpenCode runs every model; the dashboard makes no additional model calls.
 
+Click an agent to inspect its work, concurrent tools, delegation links, and workflow timeline. Use **Fit studio**, **Focus agent**, drag, or pinch to navigate. Avatar models remain stable per session.
+
 ![OfficeCode studio with Frontend, Backend, and QA agents](docs/assets/studio-preview.png)
 
 ## Install
