@@ -1,6 +1,7 @@
 import { deskPoint, roomRect, type Rect } from "./layout";
 import { displayWorkRole } from "./work-role";
 import { resolveFocus, hitAgent } from "./agent-inspector";
+import { stepDuration, type ActivityStep } from "../shared/run-history";
 import { selectVisibleAgents } from "./live-agents";
 import { allocateStudioSeats, studioGeometry, studioHeight, type OfficeStation, type StudioSeat } from "./studio-seating";
 import { getStudioPeriod, recolorStudioPixels, studioMaterial, STUDIO_THEMES } from "./studio-theme";
@@ -19,7 +20,7 @@ interface Room { id: string; name: string; color: string }
 interface Hallway { fromRoomId: string; toRoomId: string; open: boolean }
 interface PlacedObject { id: string; roomId: string; kind: string }
 interface OfficeDoc { building: string; rooms: Room[]; desks: Desk[]; hallways: Hallway[]; objects: PlacedObject[] }
-interface Run { id: string; deskId: string; role: string; state: string; prompt: string; sessionId?: string; parentSessionId?: string; activity?: string; detail?: string }
+interface Run { id: string; deskId: string; role: string; state: string; prompt: string; sessionId?: string; parentSessionId?: string; activity?: string; detail?: string; startedAt?: string; finishedAt?: string; timeline?: ActivityStep[]; historyTruncated?: number }
 interface QueueItem { position: number; deskId: string; role: string; prompt: string }
 
 const COLORS = {
@@ -178,6 +179,20 @@ function renderPanels(): void {
   if (geometry.height !== nextGeometry.height) studioDirty = true;
   geometry = nextGeometry;
   const focus = resolveFocus(runs, sessions, selectedRunId);
+  (document.getElementById("timelineSection") as HTMLElement).hidden = !mirrorOnly;
+  const steps = focus?.timeline ?? [];
+  const timeline = document.getElementById("timelineList") as HTMLElement;
+  timeline.replaceChildren(...steps.slice(-30).map((step, index, shown) => {
+    const item = element("li", "timeline-step");
+    const time = element("time", "timeline-time", new Date(step.at).toLocaleTimeString("en-GB"));
+    time.dateTime = step.at;
+    const duration = stepDuration(step, shown[index + 1]?.at ?? focus?.finishedAt);
+    item.append(time, element("strong", "", `${ACTIVITY[step.activity]?.label ?? label(step.state)} · ${duration}`), element("span", "timeline-detail", step.detail));
+    return item;
+  }));
+  if (!steps.length) timeline.append(element("li", "empty", "Select an agent to inspect its workflow."));
+  (document.getElementById("timelineSummary") as HTMLElement).textContent = focus
+    ? `${label(focus.state)} · ${steps.length + (focus.historyTruncated ?? 0)} steps${steps.length > 30 || focus.historyTruncated ? " · latest 30" : ""}` : "No run selected";
   const roleFor = (run: Run): string => displayWorkRole(run, sessions.length === 1 && focus?.id === run.id);
   (document.getElementById("teamSection") as HTMLElement).hidden = !mirrorOnly;
   const teamList = document.getElementById("teamList") as HTMLElement;

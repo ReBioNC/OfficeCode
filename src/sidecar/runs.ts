@@ -5,6 +5,7 @@ import { makeEvent, type RunState } from "../shared/events.js";
 import { appendEvent, nextSeq } from "./ledgers.js";
 import type { OfficeStore } from "./office-store.js";
 import type { Driver } from "./drivers.js";
+import type { ActivityStep } from "../shared/run-history.js";
 
 export interface RunRecord {
   id: string;
@@ -16,6 +17,10 @@ export interface RunRecord {
   parentSessionId?: string;
   activity?: string;
   detail?: string;
+  startedAt?: string;
+  finishedAt?: string;
+  timeline?: ActivityStep[];
+  historyTruncated?: number;
   transcriptPath: string;
   outboxDir: string;
   exitCode: number | null;
@@ -104,12 +109,15 @@ export async function registerMirrorRun(
     parentSessionId: input.parentSessionId,
     activity: "arriving",
     detail: "Setting up workspace",
+    startedAt: new Date().toISOString(),
+    timeline: [],
     transcriptPath: path.join(store.dir, "transcripts", `${id}.md`),
     outboxDir: path.join(store.dir, "outbox", id),
     exitCode: null,
   };
   runs.set(id, run);
   mirrorBySession.set(input.sessionId, id);
+  recordMirrorStep(run);
   notifyRun(run);
   appendEvent(store.dir, makeEvent(nextSeq(store.dir), id, "run.created", { state: "walking", message: `mirror ${input.sessionId}` }));
   fs.mkdirSync(path.dirname(run.transcriptPath), { recursive: true });
@@ -144,9 +152,10 @@ export async function finishMirrorRun(
   const run = getMirrorRun(sessionId);
   if (!run) throw notFound(sessionId);
   appendEvent(store.dir, makeEvent(nextSeq(store.dir), run.id, "run.finished", { state: outcome }));
-  setState(store, run, outcome, message);
   run.activity = outcome;
   run.detail = outcome === "done" ? "Session complete" : "Session stopped";
+  run.finishedAt = new Date().toISOString();
+  setState(store, run, outcome, message);
   store.occupants.delete(run.deskId);
   mirrorBySession.delete(sessionId);
   notifyRun(run);
@@ -160,8 +169,20 @@ export async function finishMirrorRun(
   return run;
 }
 
+function recordMirrorStep(run: RunRecord): void {
+  if (!run.timeline) return;
+  const previous = run.timeline[run.timeline.length - 1];
+  const step = { at: new Date().toISOString(), state: run.state, activity: run.activity ?? run.state, detail: run.detail ?? "" };
+  if (previous?.state === step.state && previous.activity === step.activity && previous.detail === step.detail) return;
+  run.timeline.push(step);
+  if (run.timeline.length > 100) {
+    run.timeline.shift(); run.historyTruncated = (run.historyTruncated ?? 0) + 1;
+  }
+}
+
 function setState(store: OfficeStore, run: RunRecord, state: RunState, message?: string): void {
   run.state = state;
+  recordMirrorStep(run);
   appendEvent(store.dir, makeEvent(nextSeq(store.dir), run.id, "run.state", { state, message }));
   notifyRun(run);
 }

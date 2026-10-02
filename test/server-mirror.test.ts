@@ -36,6 +36,18 @@ async function mirror(p: string, body: unknown): Promise<{ status: number; json:
 }
 
 describe("mirror api", () => {
+  it("keeps timestamped tool history after completion without duplicate idle snapshots", async () => {
+    await mirror("/api/mirror/session", { sessionId: "timeline-api", prompt: "Timeline feature" });
+    await mirror("/api/mirror/event", { sessionId: "timeline-api", state: "acting", activity: "reading", detail: "Reading app.ts" });
+    await mirror("/api/mirror/event", { sessionId: "timeline-api", state: "acting", activity: "reading", detail: "Reading app.ts" });
+    await mirror("/api/mirror/event", { sessionId: "timeline-api", state: "acting", activity: "editing", detail: "Editing app.ts" });
+    const result = await mirror("/api/mirror/finish", { sessionId: "timeline-api", outcome: "done" });
+    const run = result.json["run"] as { startedAt?: string; finishedAt?: string; timeline?: { at: string; activity: string }[] };
+    assert.deepEqual(run.timeline?.map((entry) => entry.activity), ["arriving", "reading", "editing", "done"]);
+    assert.ok(Number.isFinite(Date.parse(run.startedAt ?? "")));
+    assert.ok(Date.parse(run.finishedAt ?? "") >= Date.parse(run.startedAt ?? ""));
+    assert.ok(run.timeline?.every((entry) => Number.isFinite(Date.parse(entry.at))));
+  });
   it("preserves real parent session metadata across registration updates", async () => {
     const reg = await mirror("/api/mirror/session", { sessionId: "child-meta", parentSessionId: "parent-meta", role: "qa-engineer", prompt: "Verify feature" });
     assert.equal((reg.json["run"] as { parentSessionId?: string }).parentSessionId, "parent-meta");
