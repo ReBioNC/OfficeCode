@@ -9,7 +9,9 @@ import { allocateStudioSeats, studioGeometry, studioHeight, type OfficeStation, 
 import { getStudioPeriod, STUDIO_THEMES } from "./studio-theme";
 import { advanceTimedRoute, planRoute, type Direction, type Point } from "./agent-motion";
 import { drawExpandedOffice } from "./studio-art";
-import { STUDIO_DOORS, STUDIO_WIDTH, STUDIO_BASE_HEIGHT } from "./studio-map";
+import { stationForRun, waitingFor, currentWorkActivity, STATION_LABEL } from "./studio-workflow";
+import { waitingDestination, type WaitingSchedule } from "./studio-waiting";
+import { STUDIO_DOORS, STUDIO_WIDTH, STUDIO_BASE_HEIGHT, STUDIO_ENTRY, STUDIO_OBSTACLES } from "./studio-map";
 import {
   BOARD_MAP, BOARD_PALETTE, CHAIR_MAP, CHAIR_PALETTE, CHAR_FRAMES,
   COMPUTER_MAP, COMPUTER_PALETTE, DESK_MAP, DESK_PALETTE, INK, PLANT_MAP, PLANT_PALETTE,
@@ -100,7 +102,8 @@ let healthInfo: { leaseManaged?: boolean; activeLeases?: number; lastEventAt?: s
 let refreshPending = false;
 let refreshing = false;
 let retryTimer: number | undefined;
-const agentPositions = new Map<string, { point: Point; target: Point; route: Point[]; time: number; direction: Direction }>();
+const agentPositions = new Map<string, { point: Point; target: Point; route: Point[]; time: number; direction: Direction; station?: OfficeStation }>();
+const waitingSchedules = new Map<string, WaitingSchedule>();
 const studioBackground = document.createElement("canvas");
 const backgroundCtx = studioBackground.getContext("2d");
 let studioDirty = true;
@@ -175,7 +178,13 @@ function visibleAgents(): Run[] {
 }
 
 function activityOf(run: Run): { label: string; persona: string; station: string; color: string } {
-  return ACTIVITY[run.activity ?? ""] ?? ACTIVITY[run.state] ?? ACTIVITY.working;
+  const dependencies=waitingFor(run,visibleAgents());
+  if (dependencies.length) {
+    const roles=[...new Set(dependencies.map(child=>displayWorkRole(child,false)))];
+    return {label:`Waiting for ${roles.length>2?`${dependencies.length} agents`:roles.join(" & ")}`,persona:"Awaiting delegated work",station:"Waiting lounge",color:"#f8be6a"};
+  }
+  const activity=ACTIVITY[currentWorkActivity(run)] ?? ACTIVITY[run.state] ?? ACTIVITY.working;
+  return {...activity,station:STATION_LABEL[stationFor(run)]};
 }
 
 function element<K extends keyof HTMLElementTagNameMap>(tag: K, className: string, content?: string): HTMLElementTagNameMap[K] {
@@ -255,15 +264,20 @@ function renderPanels(): void {
     tools.replaceChildren(...(focus?.activeTools ?? []).map((tool) => element("li", "tool-item", `${tool.name} · ${tool.detail}`)));
     tools.hidden = !focus?.activeTools?.length;
     const activeModes = new Set(sessions.map((run) => {
-      if (run.activity === "code-search") return "reading";
-      if (run.activity === "working") return "editing";
-      if (run.activity === "delegating") return "thinking";
-      if (run.activity === "approval") return "approval";
-      return run.activity;
+      const station=stationFor(run),activity=currentWorkActivity(run);
+      if (station==="waiting" || station==="arrival" || station==="approval") return station;
+      if (activity === "code-search") return "reading";
+      if (activity === "working") return "editing";
+      if (activity === "delegating") return "thinking";
+      return activity;
     }));
-    for (const run of sessions) for (const tool of run.activeTools ?? []) activeModes.add(tool.activity === "code-search" ? "reading" : tool.activity === "delegating" ? "thinking" : tool.activity);
+    for (const run of sessions) {
+      if (stationFor(run)==="review") activeModes.add("review");
+      if (stationFor(run)==="waiting" || stationFor(run)==="approval") continue;
+      for (const tool of run.activeTools ?? []) activeModes.add(tool.activity === "code-search" ? "reading" : tool.activity === "delegating" ? "thinking" : tool.activity);
+    }
     document.querySelectorAll<HTMLElement>(".activity-chip").forEach((chip) => {
-      chip.dataset.active = activeModes.has(chip.dataset.activity) ? "true" : "false";
+      chip.dataset.active = activeModes.has(chip.dataset.activity ?? "") ? "true" : "false";
     });
   }
   statActive.textContent = String(mirrorOnly ? sessions.filter((run) => run.state !== "done" && run.state !== "blocked").length : Object.keys(occupants).length);
@@ -589,19 +603,11 @@ function drawLounge(): void {
 }
 
 function stationFor(run: Run): OfficeStation {
-  if (run.state === "done") return "lounge";
-  if (run.state === "blocked") return "approval";
-  if (run.activity === "reading" || run.activity === "code-search") return "reading";
-  if (run.activity === "web-search") return "web-search";
-  if (run.activity === "terminal") return "terminal";
-  if (run.activity === "delegating") return "delegating";
-  if (run.activity === "editing" || run.activity === "working") return "editing";
-  if (run.activity === "approval" || run.state === "waiting-approval") return "approval";
-  return "thinking";
+  return stationForRun(run,visibleAgents());
 }
 
 function drawAgentBubble(run: Run, x: number, y: number, color: string, lane: number): void {
-  const text = short(run.detail || activityOf(run).label, 31);
+  const text = short(stationFor(run)==="waiting" ? activityOf(run).label : run.detail || activityOf(run).label, 31);
   ctx.font = 'bold 11px "Courier New", monospace';
   const width = Math.min(278, Math.ceil(ctx.measureText(text).width) + 18);
   const left = snap(Math.max(42, Math.min(x - 16, canvas.width - 42 - width)));
@@ -664,9 +670,16 @@ function drawOccupiedChair(x: number, y: number, scale: number, front: boolean):
   }
 }
 
+function arrivalPoint(fallback: Point): Point {
+  const candidates=[STUDIO_ENTRY,...[1048,1000,956].flatMap(y=>[444,480,516].map(x=>({x,y})))];
+  return candidates.find(point=>!STUDIO_OBSTACLES.some(r=>point.x>r.x && point.x<r.x+r.w && point.y>r.y && point.y<r.y+r.h)
+    && ![...agentPositions.values()].some(agent=>Math.hypot(agent.point.x-point.x,agent.point.y-point.y)<34)) ?? fallback;
+}
+
 function drawOfficeAgents(sessions: Run[], tick: number, now: number): void {
   const visibleIds = new Set(sessions.map((run) => run.sessionId ?? run.id));
   for (const id of agentPositions.keys()) if (!visibleIds.has(id)) agentPositions.delete(id);
+  for (const id of waitingSchedules.keys()) if (!visibleIds.has(id)) waitingSchedules.delete(id);
   const planningCount = sessions.filter((run) => ["thinking", "delegating"].includes(stationFor(run))).length;
   if (planningCount > 1 && sessions.some((run) => stationFor(run) === "delegating")) {
     ctx.fillStyle = tick % 2 === 0 ? "#f8be6a" : "#cbb5f1";
@@ -682,16 +695,27 @@ function drawOfficeAgents(sessions: Run[], tick: number, now: number): void {
     const computer = seat.computer;
     const prior = agentPositions.get(id);
     const feet = seat.point;
-    let agent = prior ?? { point: feet, target: feet, route: [], time: now, direction: "south" as Direction };
+    const entrance=prior?.point ?? arrivalPoint(feet);
+    let agent = prior ?? { point: entrance, target: entrance, route: [], time: now, direction: "south" as Direction };
+    let target=feet;
+    if (station==="waiting" && !reducedMotion) {
+      const schedule=prior?.station==="waiting" ? waitingSchedules.get(id) ?? {step:0} : {step:0};
+      waitingSchedules.set(id,schedule);
+      target=prior?.target ?? feet;
+      if (!prior || prior.station!=="waiting") target=feet;
+      const destination=waitingDestination(seat,schedule,now,agent.route.length===0 && Math.hypot(agent.point.x-target.x,agent.point.y-target.y)<2);
+      if (destination) target=destination;
+    } else waitingSchedules.delete(id);
     if (reducedMotion) agent = { ...agent, point: feet, target: feet, route: [] };
-    else if (agent.target.x !== feet.x || agent.target.y !== feet.y) {
-      agent = { ...agent, target: feet, route: planRoute(agent.point, feet, geometry.obstacles, canvas.height - 24) ?? [] };
+    else if (agent.target.x !== target.x || agent.target.y !== target.y) {
+      agent = { ...agent, target, route: planRoute(agent.point, target, geometry.obstacles, canvas.height - 24) ?? [] };
     }
     if (agent.route.length) agent = { ...agent, ...advanceTimedRoute(agent.point, agent.route, now - agent.time) };
-    agent.time = now;
+    agent={...agent,time:now,station};
     agentPositions.set(id, agent);
     const x = snap(agent.point.x - 6 * scale), y = snap(agent.point.y - 13 * scale);
-    const arrived = Math.hypot(agent.point.x - feet.x, agent.point.y - feet.y) < 2;
+    const moving=agent.route.length>0;
+    const arrived = !moving && Math.hypot(agent.point.x - feet.x, agent.point.y - feet.y) < 2;
     const seated = arrived && seat.seated;
     const activity = activityOf(run);
     const workRole = displayWorkRole(run, sessions.length === 1);
@@ -700,23 +724,23 @@ function drawOfficeAgents(sessions: Run[], tick: number, now: number): void {
       ctx.strokeStyle = theme.ui.sage; ctx.lineWidth = 2;
       ctx.strokeRect(x - 5, y - 3, 46, 48);
     }
-    if (computer) {
+    if (computer && arrived) {
       ctx.fillStyle = tick % 2 === 0 ? "#b5fff0" : "#67dccb";
       ctx.fillRect(computer[0] + 18, computer[1] - 8, 13, 2);
       ctx.fillRect(computer[0] + 18, computer[1] - 3, 9, 2);
     }
     if (station === "approval") {
-      ctx.fillStyle = tick % 2 === 0 ? "#ffd594" : "#ff827d"; ctx.fillRect(613, 347, 8, 53);
+      ctx.fillStyle = tick % 2 === 0 ? "#ffd594" : "#ff827d"; ctx.fillRect(x+36,y-8,7,7);
     }
     ctx.fillStyle = activity.color;
     ctx.fillRect(x - 5, y + 14 * scale - 4, 12 * scale + 10, 4);
-    if (seated) drawOccupiedChair(x, y, scale, false);
-    const frame = !arrived ? WALK_FRAMES[agent.direction][Math.floor(now / 90) % 8]
+    if (seated && station!=="waiting") drawOccupiedChair(x, y, scale, false);
+    const frame = moving ? WALK_FRAMES[agent.direction][Math.floor(now / 90) % 8]
       : CHAR_FRAMES[station === "thinking" || station === "delegating" ? (tick % 2 === 0 ? "talkA" : "talkB")
-        : seated ? (tick % 2 === 0 ? "typeA" : "typeB") : frameForState(run.state, tick)];
-    drawSprite(ctx, avatarFrame(id, frame, !arrived ? agent.direction : seated && computer ? "north" : "south"), palette, x, y, scale);
-    if (seated) drawOccupiedChair(x, y, scale, true);
-    if (station === "reading" && arrived) {
+        : station==="waiting" ? (seated?"talkA":"idle") : seated ? (tick % 2 === 0 ? "typeA" : "typeB") : frameForState(run.state, tick)];
+    drawSprite(ctx, avatarFrame(id, frame, moving ? agent.direction : seated && computer ? "north" : "south"), palette, x, y, scale);
+    if (seated && station!=="waiting") drawOccupiedChair(x, y, scale, true);
+    if ((station === "reading" || station==="review" && ["reading","code-search"].includes(currentWorkActivity(run))) && arrived) {
       ctx.fillStyle = "#fff1df"; ctx.fillRect(x + 8, y + 27, 22, 14);
       ctx.fillStyle = "#8ea8f1"; ctx.fillRect(x + 18, y + 29, 2, 10);
       ctx.fillStyle = "#776f9d"; ctx.fillRect(x + 11, y + 32 + tick % 2 * 3, 6, 2);
@@ -759,6 +783,7 @@ function drawSessionFloor(tick: number, now: number): void {
   if (backgroundCtx) ctx.drawImage(studioBackground, 0, 0);
   if (sessions.length === 0) {
     agentPositions.clear();
+    waitingSchedules.clear();
     doorOpenness.clear();
     drawStudioDoors(now);
     plate("STUDIO STANDBY", 1080, 974, "#f8be6a");

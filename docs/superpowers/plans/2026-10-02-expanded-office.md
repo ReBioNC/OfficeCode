@@ -43,10 +43,10 @@
 
 **Interfaces:** stationForRun(run, visibleRuns): OfficeStation; waitingDependency derives actual live children and active delegation tools. Waiting targets are deterministic and room-local; arrival starts at STUDIO_ENTRY.
 
-- [ ] Write failing tests for room selection, concurrent tools, permissions, completed children and bounded waiting routes.
-- [ ] Implement lobby entry, workflow destinations and lounge wandering with pauses, stable seats and immediate retargeting when work resumes.
-- [ ] Run build, full npm test and isolated browser lifecycle checks with multiple sessions.
-- [ ] Commit `feat: route agents by activity and animate dependency waits`.
+- [x] Write failing tests for room selection, concurrent tools, permissions, completed children and bounded waiting routes.
+- [x] Implement lobby entry, workflow destinations and lounge wandering with pauses, stable seats and immediate retargeting when work resumes.
+- [x] Run build, full npm test and isolated browser lifecycle checks with multiple sessions.
+- [x] Commit `feat: route agents by activity and animate dependency waits`.
 
 ### Task 3: Guide and final verification
 
@@ -61,3 +61,6 @@
 Prototype approval and "ok gas eksekusi" authorize execution without another design approval. No plugin payload or server API changes are required; the installed global plugin uses this checkout's rebuilt dashboard.
 
 Task 1 verification: npm run build and npm test passed (121 tests). Isolated browser checks passed for selection, timeline, read endpoints, desktop/mobile fit, touch pinch and connection recovery. Every seat, including a 48-agent overflow crowd, is reachable through collision-safe routes.
+
+Task 2 verification: npm run build and npm test passed (126 tests). Browser RED observed Coordinating instead of Waiting for Backend; GREEN verified API-to-browser waiting, permissions including concurrent local reads, child completion and character removal. A controlled-clock browser verified actual lobby entry, lounge wandering with pauses, collision-safe feet and interruption when editing resumes.
+Ruling: no server or plugin changes; existing activeTools and parentSessionId provide the real dependency signal. Single generic agents keep Fullstack as their display role while audit task hints can select the focus room.
