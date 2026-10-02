@@ -106,6 +106,7 @@
     .timeline-step { display:grid; grid-template-columns:62px 1fr; gap:3px 8px; padding-left:8px; border-left:2px solid var(--sage); font:10px/1.4 "Courier New",monospace; }
     .timeline-time { color:var(--muted); }
     .timeline-detail { grid-column:2; color:var(--muted); overflow-wrap:anywhere; }
+    #lastEvent { display:block; margin-top:6px; color:var(--muted); font:10px "Courier New",monospace; }
     :focus-visible { outline:3px solid #81e8da; outline-offset:3px; }
     /* Time-of-day colors share one vocabulary across the studio and panels. */
     .floor-status { display:flex; flex-direction:column; align-items:flex-end; gap:6px; }
@@ -153,7 +154,7 @@
       <div class="floor-footer"><span>One studio · agents follow OpenCode activity</span><strong id="lastSync">Waiting for sync</strong></div>
     </main>
     <aside class="command-center" aria-label="Office information center">
-      <header class="command-header"><div class="command-title"><div><h2>Activity center</h2><p class="command-subtitle">Follow agent workflows in the studio.</p></div><span class="view-tag">LIVE</span></div><span id="connection" class="connection" data-state="offline" role="status">Connecting…</span></header>
+      <header class="command-header"><div class="command-title"><div><h2>Activity center</h2><p class="command-subtitle">Follow agent workflows in the studio.</p></div><span class="view-tag">LIVE</span></div><span id="connection" class="connection" data-state="offline" role="status">Connecting…</span><span id="lastEvent">No activity received yet</span></header>
       <div id="activityTracker" class="activity-tracker" aria-label="Current agent activity" hidden><span class="activity-chip" data-activity="thinking">◌ THINK</span><span class="activity-chip" data-activity="reading">▤ READ</span><span class="activity-chip" data-activity="editing">✎ EDIT</span><span class="activity-chip" data-activity="web-search">◎ WEB</span><span class="activity-chip" data-activity="terminal">&gt;_ TERM</span><span class="activity-chip" data-activity="approval">! PERMIT</span></div>
       <div class="metrics" aria-label="Office overview"><div class="metric"><span class="metric-label">Active</span><span id="statActive" class="metric-value">—</span><span class="metric-unit">agents working</span></div><div class="metric"><span class="metric-label">Queued</span><span id="statQueue" class="metric-value">—</span><span class="metric-unit">tasks waiting</span></div><div class="metric"><span class="metric-label">Spend</span><span id="statSpent" class="metric-value money">—</span><span class="metric-unit">USD today · est.</span></div></div>
       <div class="center-scroll">

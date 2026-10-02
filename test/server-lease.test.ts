@@ -39,7 +39,9 @@ describe("managed sidecar lifetime", () => {
     try {
       assert.equal((await lease(server.url, "POST", first)).status, 200);
       assert.equal((await lease(server.url, "POST", second)).status, 200);
+      assert.equal((await (await fetch(`${server.url}/api/health`)).json()).activeLeases, 2);
       assert.equal((await lease(server.url, "DELETE", first)).status, 200);
+      assert.equal((await (await fetch(`${server.url}/api/health`)).json()).activeLeases, 1);
       assert.equal((await fetch(`${server.url}/api/health`)).status, 200);
       assert.equal((await lease(server.url, "DELETE", second)).status, 200);
       await waitClosed(server.url);

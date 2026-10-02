@@ -45,6 +45,7 @@ export async function startServer(workspaceDir: string, port: number, options: {
   let hadLease = false;
   let leaseTimer: NodeJS.Timeout | undefined;
   let closing = false;
+  let lastEventAt: string | null = null;
 
   const sweepLeases = () => {
     if (!leaseManaged || closing) return;
@@ -65,7 +66,7 @@ export async function startServer(workspaceDir: string, port: number, options: {
     const line = `event: office\ndata: ${JSON.stringify(payload)}\n\n`;
     for (const res of clients) res.write(line);
   };
-  setOnRunUpdate((run) => broadcast({ runId: run.id, state: run.state }));
+  setOnRunUpdate((run) => { lastEventAt = new Date().toISOString(); broadcast({ runId: run.id, state: run.state }); });
   setOnSettled(() => {
     void pumpQueue(store, workspaceDir, () => selectDriver(process.env as Record<string, string>))
       .then(() => broadcast({ queueUpdated: true }));
@@ -74,7 +75,8 @@ export async function startServer(workspaceDir: string, port: number, options: {
   const server = http.createServer((req, res) => {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
     if (req.method === "GET" && url.pathname === "/api/health") {
-      sendJson(res, 200, { ok: true, version: 1, service: "officecode", workspace: path.resolve(workspaceDir), mirrorOnly: process.env["OFFICECODE_MIRROR_ONLY"] === "1", leaseManaged, pid: process.pid });
+      sendJson(res, 200, { ok: true, version: 1, service: "officecode", workspace: path.resolve(workspaceDir), mirrorOnly: process.env["OFFICECODE_MIRROR_ONLY"] === "1", leaseManaged, pid: process.pid,
+        activeLeases: [...leases.values()].filter((seen) => Date.now() - seen <= leaseOptions.ttlMs).length, lastEventAt });
       return;
     }
     if (url.pathname === "/api/lease" && (req.method === "POST" || req.method === "DELETE")) {

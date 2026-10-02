@@ -58,6 +58,7 @@ describe("mirror api", () => {
   it("registers, streams, and finishes an opencode session", async () => {
     const reg = await mirror("/api/mirror/session", { sessionId: "ses-a", role: "build", prompt: "make x" });
     assert.equal(reg.status, 201);
+    assert.ok(Number.isFinite(Date.parse((await (await fetch(`${base}/api/health`)).json()).lastEventAt)));
     assert.equal((reg.json["run"] as { detail: string }).detail, "Setting up workspace");
     const deskId = (reg.json["run"] as { deskId: string }).deskId;
     assert.ok(deskId);

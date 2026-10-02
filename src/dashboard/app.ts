@@ -3,6 +3,7 @@ import { displayWorkRole } from "./work-role";
 import { resolveFocus, hitAgent } from "./agent-inspector";
 import { stepDuration, type ActivityStep } from "../shared/run-history";
 import { attachStudioCamera } from "./studio-camera";
+import { connectionStatus } from "./connection-status";
 import { selectVisibleAgents } from "./live-agents";
 import { allocateStudioSeats, studioGeometry, studioHeight, type OfficeStation, type StudioSeat } from "./studio-seating";
 import { getStudioPeriod, recolorStudioPixels, studioMaterial, STUDIO_THEMES } from "./studio-theme";
@@ -91,6 +92,10 @@ let queue: QueueItem[] = [];
 let spentEstimated = 0;
 let streamReady = false;
 let latestFetchOkay = false;
+let serverAvailable = false;
+let healthAttempted = false;
+let lastSnapshotAt = 0;
+let healthInfo: { leaseManaged?: boolean; activeLeases?: number; lastEventAt?: string | null } = {};
 let refreshPending = false;
 let refreshing = false;
 let retryTimer: number | undefined;
@@ -172,9 +177,12 @@ function element<K extends keyof HTMLElementTagNameMap>(tag: K, className: strin
 }
 
 function renderConnection(): void {
-  const online = streamReady && latestFetchOkay;
-  connection.dataset.state = online ? "online" : "offline";
-  connection.textContent = online ? "Live · synced" : "Reconnecting…";
+  const status = connectionStatus({ server: serverAvailable, stream: streamReady, fresh: latestFetchOkay && Date.now() - lastSnapshotAt < 30_000,
+    managed: healthInfo.leaseManaged === true, leases: healthInfo.activeLeases ?? 0, active: visibleAgents().length, attempted: healthAttempted });
+  connection.dataset.state = status.state;
+  connection.textContent = status.text;
+  const lastEvent = document.getElementById("lastEvent") as HTMLElement;
+  lastEvent.textContent = healthInfo.lastEventAt ? `Last event ${new Date(healthInfo.lastEventAt).toLocaleTimeString("en-GB")}` : "No activity received yet";
 }
 
 function renderPanels(): void {
@@ -326,7 +334,7 @@ function renderPanels(): void {
 }
 
 async function fetchJson<T>(path: string): Promise<T> {
-  const response = await fetch(path, { cache: "no-store" });
+  const response = await fetch(path, { cache: "no-store", signal: AbortSignal.timeout(3000) });
   if (!response.ok) throw new Error(`${path}: HTTP ${response.status}`);
   return response.json() as Promise<T>;
 }
@@ -339,11 +347,12 @@ async function snapshot(): Promise<void> {
     while (refreshPending) {
       refreshPending = false;
       try {
-        const [officeData, runsData, queueData, budgetData] = await Promise.all([
+        const [officeData, runsData, queueData, budgetData, serverHealth] = await Promise.all([
           fetchJson<{ office: OfficeDoc; occupants: Record<string, string>; mirrorOnly?: boolean }>("/api/office"),
           fetchJson<{ runs: Run[] }>("/api/runs"),
           fetchJson<{ queue: QueueItem[] }>("/api/queue"),
           fetchJson<{ spentEstimated: number }>("/api/budgets"),
+          fetchJson<typeof healthInfo>("/api/health"),
         ]);
         office = officeData.office;
         occupants = officeData.occupants;
@@ -352,11 +361,15 @@ async function snapshot(): Promise<void> {
         queue = queueData.queue;
         spentEstimated = Number.isFinite(budgetData.spentEstimated) ? budgetData.spentEstimated : 0;
         latestFetchOkay = true;
+        healthAttempted = true; serverAvailable = true; healthInfo = serverHealth; lastSnapshotAt = Date.now();
         if (retryTimer !== undefined) { window.clearTimeout(retryTimer); retryTimer = undefined; }
         renderPanels();
         draw();
       } catch {
         latestFetchOkay = false;
+        healthAttempted = true;
+        try { healthInfo = await fetchJson<typeof healthInfo>("/api/health"); serverAvailable = true; }
+        catch { serverAvailable = false; }
         (document.getElementById("lastSync") as HTMLElement).textContent = "Data has not refreshed";
         if (retryTimer === undefined) {
           retryTimer = window.setTimeout(() => { retryTimer = undefined; void snapshot(); }, 3000);
@@ -1068,13 +1081,16 @@ function connect(): void {
   source.onopen = () => { streamReady = true; renderConnection(); void snapshot(); };
   source.addEventListener("snapshot", () => { void snapshot(); });
   source.addEventListener("office", () => { void snapshot(); });
-  source.onerror = () => { streamReady = false; renderConnection(); };
+  source.onerror = () => { streamReady = false; renderConnection(); void snapshot(); };
 }
 
 updateStudioClock();
 window.setInterval(() => {
   if (document.visibilityState === "visible" && updateStudioClock()) draw();
 }, 15_000);
+window.setInterval(() => {
+  if (document.visibilityState === "visible") { renderConnection(); void snapshot(); }
+}, 10_000);
 draw();
 void snapshot();
 connect();
@@ -1084,5 +1100,5 @@ document.addEventListener("visibilitychange", () => {
   const now = performance.now();
   for (const agent of agentPositions.values()) agent.time = now;
   lastDoorTime = now;
-  if (document.visibilityState === "visible") { updateStudioClock(); draw(now); }
+  if (document.visibilityState === "visible") { updateStudioClock(); draw(now); void snapshot(); }
 });
