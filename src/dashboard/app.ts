@@ -112,6 +112,14 @@ let geometry = studioGeometry(studioSeats);
 let studioPeriod = getStudioPeriod(new Date());
 let theme = STUDIO_THEMES[studioPeriod];
 let selectedRunId: string | undefined;
+let showRelations = false;
+const relationsToggle = document.getElementById("toggleRelations") as HTMLButtonElement;
+relationsToggle.onclick = () => {
+  showRelations = !showRelations;
+  relationsToggle.setAttribute("aria-pressed", String(showRelations));
+  relationsToggle.textContent = showRelations ? "Hide relations" : "Show relations";
+  draw();
+};
 const camera = attachStudioCamera(canvas, () => {
   const focus = resolveFocus(runs, visibleAgents(), selectedRunId);
   return focus ? agentPositions.get(focus.sessionId ?? focus.id)?.point : undefined;
@@ -195,6 +203,7 @@ function renderPanels(): void {
   if (geometry.height !== nextGeometry.height) studioDirty = true;
   geometry = nextGeometry;
   const focus = resolveFocus(runs, sessions, selectedRunId);
+  relationsToggle.hidden = !mirrorOnly;
   (document.getElementById("zoomFocus") as HTMLButtonElement).disabled = !focus || !sessions.some((run) => run.id === focus.id);
   (document.getElementById("timelineSection") as HTMLElement).hidden = !mirrorOnly;
   const steps = focus?.timeline ?? [];
@@ -1044,11 +1053,11 @@ function drawSessionFloor(tick: number, now: number): void {
   }
   drawStudioDoors(now);
   drawOfficeAgents(sessions, tick, now);
-  if (selectedRunId) {
+  if (showRelations) {
     ctx.save(); ctx.strokeStyle = theme.ui.sage; ctx.globalAlpha = .55; ctx.setLineDash([4, 5]);
     for (const child of sessions) {
       const parent = sessions.find((run) => run.sessionId === child.parentSessionId);
-      if (!parent || (child.id !== selectedRunId && parent.id !== selectedRunId)) continue;
+      if (!parent || (selectedRunId && child.id !== selectedRunId && parent.id !== selectedRunId)) continue;
       const a = agentPositions.get(parent.sessionId ?? parent.id)?.point;
       const b = agentPositions.get(child.sessionId ?? child.id)?.point;
       if (a && b) { ctx.beginPath(); ctx.moveTo(a.x, a.y + 4); ctx.lineTo(b.x, b.y + 4); ctx.stroke(); }

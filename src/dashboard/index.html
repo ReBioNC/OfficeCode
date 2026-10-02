@@ -24,6 +24,7 @@
     .studio-toolbar button { min-height:32px; min-width:34px; padding:5px 9px; border:1px solid var(--line); background:var(--light); color:var(--ink); font:700 11px "Courier New",monospace; cursor:pointer; }
     .studio-toolbar span { color:var(--muted); font:10px "Courier New",monospace; }
     .studio-toolbar button:disabled { opacity:.45; cursor:default; }
+    .studio-toolbar button[aria-pressed="true"] { border-color:var(--sage); background:var(--active-bg); }
     details.panel-section summary { cursor:pointer; }
     .floor-footer { display:flex; align-items:center; justify-content:space-between; gap:12px; min-height:40px; padding:0 24px; color:#bcb7d4; border-top:1px solid #403954; font:11px "Courier New",monospace; }
     .floor-footer strong { color:var(--accent); }
@@ -154,7 +155,7 @@
   <div class="app">
     <main class="floor-panel" aria-label="Live office floor">
       <header class="floor-header"><div><p id="studioPeriod" class="eyebrow">Studio / live feed</p><h1>Office<span>Code</span> Studio</h1></div><div class="floor-status"><span id="floorMeta" class="floor-meta">Loading studio…</span><time id="studioClock" aria-label="Local time"></time></div></header>
-      <div class="studio-toolbar" role="group" aria-label="Studio view controls"><button id="zoomOut" type="button" aria-label="Zoom out">−</button><span id="zoomValue" aria-live="polite">100%</span><button id="zoomIn" type="button" aria-label="Zoom in">+</button><button id="zoomFit" type="button">Fit studio</button><button id="zoomFocus" type="button">Focus agent</button><span>Drag to pan · pinch to zoom</span></div>
+      <div class="studio-toolbar" role="group" aria-label="Studio view controls"><button id="zoomOut" type="button" aria-label="Zoom out">−</button><span id="zoomValue" aria-live="polite">100%</span><button id="zoomIn" type="button" aria-label="Zoom in">+</button><button id="zoomFit" type="button">Fit studio</button><button id="zoomFocus" type="button">Focus agent</button><button id="toggleRelations" type="button" aria-pressed="false" hidden>Show relations</button><span>Drag to pan · pinch to zoom</span></div>
       <div class="floor-stage"><canvas id="floor" width="960" height="560" role="img" aria-label="Office studio with agents, workstations, and live OpenCode activity"></canvas></div>
       <div class="floor-footer"><span>One studio · agents follow OpenCode activity</span><strong id="lastSync">Waiting for sync</strong></div>
     </main>
