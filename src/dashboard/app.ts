@@ -1,5 +1,5 @@
 import { deskPoint, roomRect, type Rect } from "./layout";
-import { displayWorkRole } from "./work-role";
+import { displayWorkRole, resolveWorkRole } from "./work-role";
 import { resolveFocus, hitAgent } from "./agent-inspector";
 import { stepDuration, type ActivityStep } from "../shared/run-history";
 import { attachStudioCamera } from "./studio-camera";
@@ -207,7 +207,7 @@ function renderPanels(): void {
   if (!steps.length) timeline.append(element("li", "empty", "Select an agent to inspect its workflow."));
   (document.getElementById("timelineSummary") as HTMLElement).textContent = focus
     ? `${label(focus.state)} · ${steps.length + (focus.historyTruncated ?? 0)} steps${steps.length > 30 || focus.historyTruncated ? " · latest 30" : ""}` : "No run selected";
-  const roleFor = (run: Run): string => displayWorkRole(run, sessions.length === 1 && focus?.id === run.id);
+  const roleFor = (run: Run): string => displayWorkRole(run, sessions.length === 1 && sessions[0]?.id === run.id);
   (document.getElementById("teamSection") as HTMLElement).hidden = !mirrorOnly;
   const teamList = document.getElementById("teamList") as HTMLElement;
   const latestSessions = new Map(runs.filter((run) => run.sessionId).map((run) => [run.sessionId, run]));
@@ -228,6 +228,10 @@ function renderPanels(): void {
   if (mirrorOnly) {
     (document.getElementById("focusStation") as HTMLElement).textContent = focus ? activityOf(focus).station : "Standby";
     (document.getElementById("focusRole") as HTMLElement).textContent = focus ? `Agent ${roleFor(focus)} · ${activityOf(focus).persona}` : "OpenCode agent";
+    if (focus) {
+      const source = resolveWorkRole(focus, sessions.length === 1 && sessions[0]?.id === focus.id).source;
+      (document.getElementById("focusRole") as HTMLElement).textContent += source === "inferred" ? " · inferred role" : source === "single-agent" ? " · single-agent role" : "";
+    }
     (document.getElementById("focusTask") as HTMLElement).textContent = focus?.prompt || "Waiting for a session";
     (document.getElementById("focusActivity") as HTMLElement).textContent = focus ? activityOf(focus).label : "No activity yet";
     (document.getElementById("focusDetail") as HTMLElement).textContent = focus?.detail || "Start working on a feature in OpenCode.";
