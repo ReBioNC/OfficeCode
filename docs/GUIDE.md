@@ -4,9 +4,9 @@ OfficeCode shows [OpenCode](https://opencode.ai/) session activity as a pixel-ar
 
 ## Preview
 
-![OfficeCode studio with Frontend, Backend, and QA agents running test sessions](assets/studio-preview.png)
+![OfficeCode expanded studio with six agents across activity rooms](assets/studio-preview.png)
 
-Three real OpenCode sessions running Frontend, Backend, and QA checks in one studio. Captured in an isolated test workspace.
+Six sample sessions show planning, frontend/backend work, auditing, research, and a parent awaiting delegated work. Captured using mirror API sample events in an isolated preview workspace, without model calls.
 
 ### Studio atmosphere
 
@@ -142,7 +142,20 @@ Dashboard titles, room signs, activity labels, role labels, speech bubbles, acce
 
 Walking uses eight poses in each of four directions and a fixed speed based on elapsed time. The browser redraws moving agents with `requestAnimationFrame`, caches the static office artwork, and lowers the redraw rate while agents are seated. Animation pauses in hidden tabs and stops when no agents remain. Reduced-motion mode shows agents directly at their activity station.
 
-All active OpenCode sessions share one pixel-art studio. Its original night palette, sunset skyline, colorful work rugs, idea corner, planning atelier, digital library, workstations, and coffee area are drawn in code. Desks have distinct monitors and keyboards. Each visible agent moves to the relevant station as OpenCode reports work: planning, reading files, editing code, searching the web or codebase, running terminal commands, coordinating tools, and waiting for permission. Agents sit at their computers with alternating typing poses for workstation activity. During planning they sit at the meeting table, gesture, and show their actual OpenCode activity in speech bubbles; a coordination cue appears when one of the agents is delegating. Partitions separate the work areas, and sliding doors open as agents approach. Agents take horizontal and vertical routes through these doorways and avoid furniture. Movement between stations is animated and respects reduced-motion settings. Agents have stable, varied skin and hair colors while their shirt color follows their displayed work role. The sidebar shows each agent's work role, task title, and latest action. Agents disappear from the floor and crew deck as soon as their task finishes. Their activity history remains in the sidebar, and the next prompt starts a new visible turn.
+All active OpenCode sessions share one spacious pixel-art office. Six furnished rooms surround wide corridors: a reception lobby, code workspace, planning room, reference library, focus/review room, and lounge with a coffee bar. Window skylines, tiled floors, woven rugs, wall art, bookshelves, plants, mail cubbies, a copier, and kitchen furniture are drawn in code. Local-clock themes still change between morning, day, evening, and night. Sliding doors connect the rooms; agents use straight horizontal/vertical routes around the same walls and furniture that are drawn on screen.
+
+| Room | Actual OpenCode activity |
+|---|---|
+| **Lobby / reception** | New agents enter here; permission waits use reception. |
+| **Code workspace** | Editing, coding, normal terminal commands, and tests. |
+| **Planning room** | Thinking and coordinating delegations before a dependency wait is confirmed. |
+| **Library** | Reading files, searching the codebase, and web searches. |
+| **Focus & review** | QA/auditor work, including reading, editing, and commands; web searches still use the library. |
+| **Lounge / coffee** | A pending delegation tool waiting on an active direct child session. |
+
+A dependency wait needs both an active delegation tool and a real parent/subagent relationship from OpenCode. Ordinary Thinking and a session becoming idle are not treated as dependency waits. Concurrent local tools take priority: an agent reading or editing while a delegation runs stays at that activity's station. Permission waits take priority over both. Waiting agents sit on lounge sofas, pause for 3.5 seconds at each stop, and occasionally walk around the coffee area and through the lounge door into the corridor. They retarget their work station when local work resumes or all active child tasks finish. Reduced-motion mode keeps them at their assigned place. Lounge circuits do not run for agents whose overflow seat is outside the lounge.
+
+Agents sit at computers with typing poses and gesture at the planning table. Speech bubbles show the actual tool target or the roles of agents being awaited. The sidebar shows their role, task, current room, and action. Stable seats keep agents distinct as sessions arrive, complete, or change activity. When the main floor is full, a southern team workspace adds real extra desks instead of recycling occupied positions. Use **Focus agent** or zoom to inspect characters in the larger floor. Agents disappear from both the floor and crew deck when their task finishes; history remains inspectable and the next prompt starts a new visible turn.
 
 These states come from OpenCode session, message, tool, and permission events. Explicit roles and custom agent names take priority. A single generic agent is displayed as **Fullstack**. With multiple generic agents, the dashboard may infer a work role from task text (for example Frontend, Backend, Auditor, or QA); the inspector marks these as **inferred role**. The original OpenCode agent name remains in the agent card. These labels describe the visualization and do not assign a new OpenCode agent. The plugin does not make extra model requests for animation or role labels.
 

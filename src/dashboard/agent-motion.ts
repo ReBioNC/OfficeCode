@@ -2,7 +2,7 @@ export interface Point { x: number; y: number }
 export interface Obstacle { x: number; y: number; w: number; h: number }
 
 const GRID = 4;
-const LEFT = 40, TOP = 112, RIGHT = 920, BOTTOM = 516;
+const LEFT = 40, TOP = 112, RIGHT = 1392, BOTTOM = 1116;
 const COLS = (RIGHT - LEFT) / GRID + 1;
 const gridCache = new WeakMap<readonly Obstacle[], Map<number, Uint8Array>>();
 
