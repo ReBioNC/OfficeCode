@@ -3,6 +3,7 @@ import { displayWorkRole, resolveWorkRole } from "./work-role";
 import { resolveFocus, hitAgent, delegationRows } from "./agent-inspector";
 import { stepDuration, type ActivityStep, type ActiveTool } from "../shared/run-history";
 import { attachStudioCamera } from "./studio-camera";
+import { attachPanelLayout } from "./panel-layout";
 import { connectionStatus } from "./connection-status";
 import { selectVisibleAgents } from "./live-agents";
 import { allocateStudioSeats, studioGeometry, studioHeight, type OfficeStation, type StudioSeat } from "./studio-seating";
@@ -86,6 +87,7 @@ const queueUl = document.getElementById("queue") as HTMLUListElement;
 const crewUl = document.getElementById("crew") as HTMLUListElement;
 const connection = document.getElementById("connection") as HTMLSpanElement;
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+attachPanelLayout();
 
 let office: OfficeDoc = { building: "HQ", rooms: [], desks: [], hallways: [], objects: [] };
 let mirrorOnly = false;
