@@ -13,6 +13,7 @@ export interface RunRecord {
   prompt: string;
   state: RunState;
   sessionId?: string;
+  parentSessionId?: string;
   activity?: string;
   detail?: string;
   transcriptPath: string;
@@ -78,12 +79,13 @@ function notFound(sessionId: string): Error & { code: number } {
 export async function registerMirrorRun(
   store: OfficeStore,
   workspaceDir: string,
-  input: { sessionId: string; role: string; prompt: string },
+  input: { sessionId: string; role: string; prompt: string; parentSessionId?: string },
 ): Promise<RunRecord> {
   const existing = getMirrorRun(input.sessionId);
   if (existing) {
     if (input.prompt && input.prompt !== "OpenCode session") existing.prompt = input.prompt.slice(0, 200);
     if (input.role && input.role !== "opencode") existing.role = input.role.slice(0, 48);
+    if (input.parentSessionId) existing.parentSessionId = input.parentSessionId;
     notifyRun(existing);
     return existing;
   }
@@ -99,6 +101,7 @@ export async function registerMirrorRun(
     prompt: input.prompt || "opencode session",
     state: "walking",
     sessionId: input.sessionId,
+    parentSessionId: input.parentSessionId,
     activity: "arriving",
     detail: "Setting up workspace",
     transcriptPath: path.join(store.dir, "transcripts", `${id}.md`),

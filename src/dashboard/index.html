@@ -95,6 +95,10 @@
     .crew-card[data-selected="true"] { outline:2px solid var(--sage); outline-offset:-2px; }
     .inspect-button { margin-top:8px; padding:4px 7px; border:1px solid var(--line); background:var(--paper); color:var(--ink); font:10px "Courier New",monospace; cursor:pointer; }
     #floor { cursor:pointer; }
+    .team-list { list-style:none; padding:0; margin:0; display:grid; gap:8px; }
+    .team-item { border-left:2px solid var(--sage); padding-left:9px; }
+    .team-select { border:0; padding:3px 0; background:none; color:var(--ink); font:700 11px "Courier New",monospace; text-align:left; cursor:pointer; }
+    .team-parent { display:block; color:var(--muted); font:10px/1.5 "Courier New",monospace; }
     :focus-visible { outline:3px solid #81e8da; outline-offset:3px; }
     /* Time-of-day colors share one vocabulary across the studio and panels. */
     .floor-status { display:flex; flex-direction:column; align-items:flex-end; gap:6px; }
@@ -145,6 +149,7 @@
       <div id="activityTracker" class="activity-tracker" aria-label="Current agent activity" hidden><span class="activity-chip" data-activity="thinking">◌ THINK</span><span class="activity-chip" data-activity="reading">▤ READ</span><span class="activity-chip" data-activity="editing">✎ EDIT</span><span class="activity-chip" data-activity="web-search">◎ WEB</span><span class="activity-chip" data-activity="terminal">&gt;_ TERM</span><span class="activity-chip" data-activity="approval">! PERMIT</span></div>
       <div class="metrics" aria-label="Office overview"><div class="metric"><span class="metric-label">Active</span><span id="statActive" class="metric-value">—</span><span class="metric-unit">agents working</span></div><div class="metric"><span class="metric-label">Queued</span><span id="statQueue" class="metric-value">—</span><span class="metric-unit">tasks waiting</span></div><div class="metric"><span class="metric-label">Spend</span><span id="statSpent" class="metric-value money">—</span><span class="metric-unit">USD today · est.</span></div></div>
       <div class="center-scroll">
+        <section id="teamSection" class="panel-section" aria-labelledby="teamHeading" hidden><div class="section-heading"><h3 id="teamHeading">Delegation</h3><span>Live team</span></div><ul id="teamList" class="team-list"></ul></section>
         <section id="focusSection" class="panel-section focus-card" aria-labelledby="focusHeading" hidden><div class="section-heading"><h3 id="focusHeading">Current work</h3><span id="focusStation">Standby</span></div><div class="focus-body"><span id="focusRole" class="focus-role">OpenCode agent</span><span id="focusTask" class="focus-task">Waiting for a session</span><span id="focusActivity" class="focus-activity">No activity yet</span><span id="focusDetail" class="focus-detail">Start working on a feature in OpenCode.</span></div></section>
         <section class="panel-section" aria-labelledby="activityTitle"><div class="section-heading"><h3 id="activityTitle">Recent activity</h3><span id="activityCount">0 runs</span></div><ul id="runs" class="activity-list" aria-live="polite"><li class="empty">No activity yet. Start a task in OpenCode.</li></ul></section>
         <section class="panel-section" aria-labelledby="queueTitle"><div class="section-heading"><h3 id="queueTitle">Queue</h3><span id="queueCount">0 tasks</span></div><ul id="queue" class="queue-list" aria-live="polite"></ul><p id="queueEmpty" class="empty">No tasks waiting.</p></section>

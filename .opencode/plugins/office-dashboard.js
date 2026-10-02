@@ -142,6 +142,7 @@ export const OfficeDashboardPlugin = async ({ client, directory }) => {
   let disposed = false;
   const leaseId = crypto.randomBytes(16).toString("hex");
   const activeSessions = new Set();
+  const sessionParents = new Map();
 
   function startHeartbeat() {
     if (heartbeat) return;
@@ -171,7 +172,7 @@ export const OfficeDashboardPlugin = async ({ client, directory }) => {
 
   async function beginSession(sid, prompt = "OpenCode session") {
     if (!sid || activeSessions.has(sid)) return;
-    if (await post(await ensure(), "/api/mirror/session", { sessionId: sid, role: "opencode", prompt })) activeSessions.add(sid);
+    if (await post(await ensure(), "/api/mirror/session", { sessionId: sid, role: "opencode", prompt, parentSessionId: sessionParents.get(sid) })) activeSessions.add(sid);
   }
 
   // The headless server may never emit server.connected. Start when OpenCode loads the plugin.
@@ -195,13 +196,17 @@ export const OfficeDashboardPlugin = async ({ client, directory }) => {
       }
       if (event.type === "session.created") {
         const sid = sessionIdOf(event);
+        const parent = event.properties?.info?.parentID;
+        if (sid && typeof parent === "string") sessionParents.set(sid, parent);
         await beginSession(sid, String(event.properties?.info?.title ?? event.properties?.title ?? "OpenCode session"));
       }
       if (event.type === "session.updated") {
         const sid = sessionIdOf(event);
+        const parent = event.properties?.info?.parentID;
+        if (sid && typeof parent === "string") sessionParents.set(sid, parent);
         const title = event.properties?.info?.title;
         if (sid && activeSessions.has(sid) && typeof title === "string" && title.trim()) {
-          await post(await ensure(), "/api/mirror/session", { sessionId: sid, role: "opencode", prompt: title });
+          await post(await ensure(), "/api/mirror/session", { sessionId: sid, role: "opencode", prompt: title, parentSessionId: sessionParents.get(sid) });
         }
       }
       if (event.type === "message.updated" && event.properties?.info?.role === "user") {

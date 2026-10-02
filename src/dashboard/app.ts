@@ -19,7 +19,7 @@ interface Room { id: string; name: string; color: string }
 interface Hallway { fromRoomId: string; toRoomId: string; open: boolean }
 interface PlacedObject { id: string; roomId: string; kind: string }
 interface OfficeDoc { building: string; rooms: Room[]; desks: Desk[]; hallways: Hallway[]; objects: PlacedObject[] }
-interface Run { id: string; deskId: string; role: string; state: string; prompt: string; sessionId?: string; activity?: string; detail?: string }
+interface Run { id: string; deskId: string; role: string; state: string; prompt: string; sessionId?: string; parentSessionId?: string; activity?: string; detail?: string }
 interface QueueItem { position: number; deskId: string; role: string; prompt: string }
 
 const COLORS = {
@@ -179,6 +179,21 @@ function renderPanels(): void {
   geometry = nextGeometry;
   const focus = resolveFocus(runs, sessions, selectedRunId);
   const roleFor = (run: Run): string => displayWorkRole(run, sessions.length === 1 && focus?.id === run.id);
+  (document.getElementById("teamSection") as HTMLElement).hidden = !mirrorOnly;
+  const teamList = document.getElementById("teamList") as HTMLElement;
+  const latestSessions = new Map(runs.filter((run) => run.sessionId).map((run) => [run.sessionId, run]));
+  teamList.replaceChildren(...sessions.map((run) => {
+    const parent = latestSessions.get(run.parentSessionId);
+    const item = element("li", "team-item");
+    const choose = element("button", "team-select", `${run.parentSessionId ? "↳ " : "● "}${roleFor(run)} · ${short(run.prompt, 40)}`);
+    choose.type = "button";
+    choose.onclick = () => selectAgent(run.id);
+    item.append(choose, element("span", "team-parent", run.parentSessionId
+      ? `Delegated by ${parent ? `${displayWorkRole(parent, false)} · ${short(parent.prompt, 32)}` : "parent session (not on this floor)"}`
+      : "Main session"));
+    return item;
+  }));
+  if (!sessions.length) teamList.append(element("li", "empty", "No active agents."));
   (document.getElementById("focusSection") as HTMLElement).hidden = !mirrorOnly;
   (document.getElementById("activityTracker") as HTMLElement).hidden = !mirrorOnly;
   if (mirrorOnly) {
@@ -971,6 +986,17 @@ function drawSessionFloor(tick: number, now: number): void {
   }
   drawStudioDoors(now);
   drawOfficeAgents(sessions, tick, now);
+  if (selectedRunId) {
+    ctx.save(); ctx.strokeStyle = theme.ui.sage; ctx.globalAlpha = .55; ctx.setLineDash([4, 5]);
+    for (const child of sessions) {
+      const parent = sessions.find((run) => run.sessionId === child.parentSessionId);
+      if (!parent || (child.id !== selectedRunId && parent.id !== selectedRunId)) continue;
+      const a = agentPositions.get(parent.sessionId ?? parent.id)?.point;
+      const b = agentPositions.get(child.sessionId ?? child.id)?.point;
+      if (a && b) { ctx.beginPath(); ctx.moveTo(a.x, a.y + 4); ctx.lineTo(b.x, b.y + 4); ctx.stroke(); }
+    }
+    ctx.restore();
+  }
   const primary = sessions[0];
   ctx.fillStyle = "#1b1d3b"; ctx.fillRect(42, 530, 872, 16);
   ctx.fillStyle = activityOf(primary).color; ctx.fillRect(42, 530, 5, 16);

@@ -239,7 +239,7 @@ export async function startServer(workspaceDir: string, port: number, options: {
         void (async () => {
           try {
             const input = JSON.parse(body) as {
-              sessionId?: string; role?: string; prompt?: string;
+              sessionId?: string; role?: string; prompt?: string; parentSessionId?: string;
               state?: string; message?: string; outcome?: string; activity?: string; detail?: string;
             };
             if (!input.sessionId) {
@@ -247,10 +247,14 @@ export async function startServer(workspaceDir: string, port: number, options: {
               return;
             }
             if (url.pathname === "/api/mirror/session") {
+              if (input.parentSessionId !== undefined && (typeof input.parentSessionId !== "string" || input.parentSessionId.length > 200 || input.parentSessionId === input.sessionId)) {
+                sendJson(res, 400, { error: "invalid parentSessionId" }); return;
+              }
               const run = await registerMirrorRun(store, workspaceDir, {
                 sessionId: input.sessionId,
                 role: input.role ?? "opencode",
                 prompt: input.prompt ?? "opencode session",
+                parentSessionId: input.parentSessionId,
               });
               broadcast({ runId: run.id, state: run.state });
               sendJson(res, 201, { run });

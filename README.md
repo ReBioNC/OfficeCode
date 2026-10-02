@@ -64,3 +64,9 @@ After installing or updating, **close all OpenCode instances**, reopen OpenCode 
 The server starts automatically with OpenCode and stops after the last OpenCode instance using that project closes. `/dashboard` only shows the URL and status; `npm run dev` is unnecessary.
 
 For troubleshooting, uninstall, API, and development details, see the [full guide](docs/GUIDE.md).
+
+### API additions
+
+| Endpoint | Dashboard metadata |
+| --- | --- |
+| `POST /api/mirror/session` | Optional `parentSessionId` links an OpenCode subagent to its parent. |

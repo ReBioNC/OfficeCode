@@ -36,6 +36,13 @@ async function mirror(p: string, body: unknown): Promise<{ status: number; json:
 }
 
 describe("mirror api", () => {
+  it("preserves real parent session metadata across registration updates", async () => {
+    const reg = await mirror("/api/mirror/session", { sessionId: "child-meta", parentSessionId: "parent-meta", role: "qa-engineer", prompt: "Verify feature" });
+    assert.equal((reg.json["run"] as { parentSessionId?: string }).parentSessionId, "parent-meta");
+    const update = await mirror("/api/mirror/session", { sessionId: "child-meta", prompt: "Updated title" });
+    assert.equal((update.json["run"] as { parentSessionId?: string }).parentSessionId, "parent-meta");
+    assert.equal((await mirror("/api/mirror/session", { sessionId: "invalid-parent", parentSessionId: 42 })).status, 400);
+  });
   it("registers, streams, and finishes an opencode session", async () => {
     const reg = await mirror("/api/mirror/session", { sessionId: "ses-a", role: "build", prompt: "make x" });
     assert.equal(reg.status, 201);

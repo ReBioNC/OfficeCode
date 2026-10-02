@@ -41,7 +41,7 @@ async function invoke(a) {
 }
 for (const a of JSON.parse(actionsJson)) await invoke(a);
 dashboardUrl = toasts.map((t) => t.split(" → ")[1]?.split(" ")[0]).find(Boolean) || dashboardUrl;
-const runs = (await api("/api/runs")).runs.map((r) => ({ id: r.id, state: r.state, deskId: r.deskId, role: r.role, activity: r.activity, detail: r.detail, sessionId: r.sessionId, prompt: r.prompt }));
+const runs = (await api("/api/runs")).runs.map((r) => ({ ...r }));
 const occupants = (await api("/api/office")).occupants;
 const info = await api("/api/health");
 if (disposeAfter) await hooks.dispose();
@@ -50,7 +50,7 @@ console.log("RESULT:" + JSON.stringify({ toasts, runs, occupants, url: dashboard
 
 interface HarnessOut {
   toasts: string[];
-  runs: Array<{ id: string; state: string; deskId: string; role?: string; activity?: string; detail?: string; sessionId?: string; prompt?: string }>;
+  runs: Array<{ id: string; state: string; deskId: string; role?: string; activity?: string; detail?: string; sessionId?: string; prompt?: string; parentSessionId?: string }>;
   occupants: Record<string, string>;
   url: string;
   info: { workspace: string; mirrorOnly: boolean; leaseManaged: boolean; pid: number };
@@ -111,6 +111,15 @@ after(async () => {
 });
 
 describe("opencode plugin", () => {
+  it("forwards the parent relationship emitted by OpenCode and retains it for the next turn", async () => {
+    const sid = "plug-child";
+    const out = await drive([
+      { call: "event", event: { type: "session.created", properties: { info: { id: sid, parentID: "plug-parent", title: "Verify code" } } } },
+      { call: "event", event: { type: "session.idle", properties: { sessionID: sid } } },
+      { call: "chat.message", input: { sessionID: sid, agent: "qa-engineer" } },
+    ]);
+    assert.ok(out.runs.filter((run) => run.sessionId === sid).every((run) => run.parentSessionId === "plug-parent"));
+  });
   it("toasts the dashboard URL on connect", async () => {
     const out = await drive([{ call: "event", event: { type: "server.connected" } }]);
     assert.ok(out.toasts.some((m) => m.includes("Office dashboard") && m.includes(String(TEST_PORT))));
@@ -122,7 +131,7 @@ describe("opencode plugin", () => {
       { call: "event", event: { type: "session.created", properties: { info: { id: "plug-s1", title: "make x" } } } },
       { call: "tool.execute.before", input: { sessionID: "plug-s1", tool: "edit" } },
     ]);
-    const run = out.runs.find((r) => r.id.startsWith("mirror-"));
+    const run = out.runs.find((r) => r.sessionId === "plug-s1");
     assert.ok(run);
     assert.equal(run.state, "acting");
     assert.ok(out.runs.some((r) => r.id === run.id));
