@@ -12,6 +12,7 @@ import { advanceTimedRoute, planRoute, type Direction, type Point } from "./agen
 import { drawExpandedOffice } from "./studio-art";
 import { stationForRun, waitingFor, currentWorkActivity, STATION_LABEL } from "./studio-workflow";
 import { waitingDestination, type WaitingSchedule } from "./studio-waiting";
+import { activityVisual, activityPose, drawActivityScreen, drawActivityProp } from "./activity-visuals";
 import { STUDIO_DOORS, STUDIO_WIDTH, STUDIO_BASE_HEIGHT, STUDIO_ENTRY, STUDIO_OBSTACLES } from "./studio-map";
 import {
   BOARD_MAP, BOARD_PALETTE, CHAIR_MAP, CHAIR_PALETTE, CHAR_FRAMES,
@@ -187,6 +188,7 @@ function activityOf(run: Run): { label: string; persona: string; station: string
     return {label:`Waiting for ${roles.length>2?`${dependencies.length} agents`:roles.join(" & ")}`,persona:"Awaiting delegated work",station:"Waiting lounge",color:"#f8be6a"};
   }
   const activity=ACTIVITY[currentWorkActivity(run)] ?? ACTIVITY[run.state] ?? ACTIVITY.working;
+  if (activityVisual(run) === "testing") return { ...activity, label: "Running tests", persona: "Test operator", station: STATION_LABEL[stationFor(run)] };
   return {...activity,station:STATION_LABEL[stationFor(run)]};
 }
 
@@ -721,6 +723,8 @@ function drawOfficeAgents(sessions: Run[], tick: number, now: number): void {
     const arrived = !moving && Math.hypot(agent.point.x - feet.x, agent.point.y - feet.y) < 2;
     const seated = arrived && seat.seated;
     const activity = activityOf(run);
+    const visual = activityVisual(run, station === "waiting");
+    const phase = reducedMotion ? 0 : Math.floor(now / 180) % 4;
     const workRole = displayWorkRole(run, sessions.length === 1);
     const palette = agentPalette(workRole, id);
     if (run.id === selectedRunId) {
@@ -728,9 +732,7 @@ function drawOfficeAgents(sessions: Run[], tick: number, now: number): void {
       ctx.strokeRect(x - 5, y - 3, 46, 48);
     }
     if (computer && arrived) {
-      ctx.fillStyle = tick % 2 === 0 ? "#b5fff0" : "#67dccb";
-      ctx.fillRect(computer[0] + 18, computer[1] - 8, 13, 2);
-      ctx.fillRect(computer[0] + 18, computer[1] - 3, 9, 2);
+      drawActivityScreen(ctx, visual, computer, phase);
     }
     if (station === "approval") {
       ctx.fillStyle = tick % 2 === 0 ? "#ffd594" : "#ff827d"; ctx.fillRect(x+36,y-8,7,7);
@@ -739,15 +741,10 @@ function drawOfficeAgents(sessions: Run[], tick: number, now: number): void {
     ctx.fillRect(x - 5, y + 14 * scale - 4, 12 * scale + 10, 4);
     if (seated && station!=="waiting") drawOccupiedChair(x, y, scale, false);
     const frame = moving ? WALK_FRAMES[agent.direction][Math.floor(now / 90) % 8]
-      : CHAR_FRAMES[station === "thinking" || station === "delegating" ? (tick % 2 === 0 ? "talkA" : "talkB")
-        : station==="waiting" ? (seated?"talkA":"idle") : seated ? (tick % 2 === 0 ? "typeA" : "typeB") : frameForState(run.state, tick)];
-    drawSprite(ctx, avatarFrame(id, frame, moving ? agent.direction : seated && computer ? "north" : "south"), palette, x, y, scale);
+      : CHAR_FRAMES[arrived ? activityPose(visual, seated, phase) : "idle"];
+    drawSprite(ctx, avatarFrame(id, frame, moving ? agent.direction : seated && computer && !["reading", "search"].includes(visual) ? "north" : "south"), palette, x, y, scale);
     if (seated && station!=="waiting") drawOccupiedChair(x, y, scale, true);
-    if ((station === "reading" || station==="review" && ["reading","code-search"].includes(currentWorkActivity(run))) && arrived) {
-      ctx.fillStyle = "#fff1df"; ctx.fillRect(x + 8, y + 27, 22, 14);
-      ctx.fillStyle = "#8ea8f1"; ctx.fillRect(x + 18, y + 29, 2, 10);
-      ctx.fillStyle = "#776f9d"; ctx.fillRect(x + 11, y + 32 + tick % 2 * 3, 6, 2);
-    }
+    if (arrived) drawActivityProp(ctx, visual, x, y, phase);
     if (run.state === "thinking" && planningCount === 1 && arrived) {
       ctx.fillStyle = "#fff7dd";
       for (let dot = 0; dot < 3; dot++) ctx.fillRect(x + 36 + dot * 7, y - 10 - (tick + dot) % 2 * 3, 4, 4);

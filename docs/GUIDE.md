@@ -161,6 +161,8 @@ These states come from OpenCode session, message, tool, and permission events. E
 
 ### Inspect and navigate
 
+Activity visuals follow the current real tool: editing has four typing poses and a code editor screen; reading has document/page-turn poses; code search adds a magnifying glass; web search uses a browser screen. Terminal work uses a monitoring pose, and recognized test commands show a pulsing **Running tests** indicator. It means a test command is active, not that tests passed or that a percentage is known. Planning uses gestures and a notebook. Moving agents keep their walking poses; reduced motion uses static activity poses. The plugin forwards only a generic test cue, without shell command arguments.
+
 - Click a character, crew card, delegation entry, or **Inspect agent** in Recent activity to select a run. Buttons also support keyboard navigation. Selection remains inspectable after the run completes; completed characters stay off the floor.
 - **Current work** shows the selected run's title, role, activity, and tool target. **Active tools** lists concurrent calls. Finishing one call does not return the agent to Thinking while other calls are running. Permission waits stay visible until OpenCode replies.
 - **Delegation** groups real parent/subagent relationships from OpenCode. Floor connection lines are hidden by default. Use **Show relations** to display them, or **Hide relations** to return to a clean view. Selecting an agent filters visible lines to its relationships; without a selection, all active relationships are shown. Every page load starts with lines hidden. A parent that is not active on this floor is identified in the list. Relationships are never guessed from task titles.

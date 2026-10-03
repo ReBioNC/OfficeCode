@@ -3,7 +3,7 @@
 // share dimensions (pinned by test/sprites.test.ts).
 
 export type PixelMap = string[];
-export type FrameName = "idle" | "walkA" | "walkB" | "work" | "typeA" | "typeB" | "talkA" | "talkB";
+export type FrameName = "idle" | "walkA" | "walkB" | "work" | "typeA" | "typeB" | "typeC" | "typeD" | "readA" | "readB" | "readSeatA" | "readSeatB" | "watchA" | "watchB" | "talkA" | "talkB";
 
 export const INK = "#15172F";
 export const SKIN = "#F2C19E";
@@ -221,6 +221,14 @@ export const CHAR_FRAMES: Record<FrameName, PixelMap> = {
   work: [...HEAD, ...TORSO_WORK, ...LEGS_IDLE],
   typeA: [...HEAD_AT_COMPUTER, ...TORSO_TYPE_A, ...LEGS_SEATED],
   typeB: [...HEAD_AT_COMPUTER, ...TORSO_TYPE_B, ...LEGS_SEATED],
+  typeC: [...HEAD_AT_COMPUTER, "..SOCCCCOSS.", ".SSOCCCCOS..", "..OCCCCCCO..", "...OCCCCO...", ...LEGS_SEATED],
+  typeD: [...HEAD_AT_COMPUTER, ".SSOCCCCOSS.", "..SOCCCCOS..", "..OCCCCCCO..", "...OCCCCO...", ...LEGS_SEATED],
+  readA: [...HEAD, "..OOCCCCOO..", "..SOCCCCOS..", "..SSOCCOSS..", "...OCCCCO...", ...LEGS_IDLE],
+  readB: [...HEAD, "..OOCCCCOO..", "..SOCCCCOS..", "...SOCCOSS..", "..SOCCCCO...", ...LEGS_IDLE],
+  readSeatA: [...HEAD, "..OOCCCCOO..", "..SOCCCCOS..", "..SSOCCOSS..", "...OCCCCO...", ...LEGS_SEATED],
+  readSeatB: [...HEAD, "..OOCCCCOO..", "..SOCCCCOS..", "...SOCCOSS..", "..SOCCCCO...", ...LEGS_SEATED],
+  watchA: [...HEAD_AT_COMPUTER, "..OOCCCCOO..", "..SOCCCCOS..", "..OCCCCCCO..", "...OCCCCO...", ...LEGS_SEATED],
+  watchB: [...HEAD_AT_COMPUTER, "..SOCCCCOO..", "..SOCCCCOS..", "..OCCCCCCO..", "...OCCCCO...", ...LEGS_SEATED],
   talkA: [...HEAD, ...TORSO_TALK_A, ...LEGS_SEATED],
   talkB: [...HEAD, ...TORSO_TALK_B, ...LEGS_SEATED],
 };

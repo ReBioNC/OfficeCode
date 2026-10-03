@@ -121,7 +121,12 @@ function toolActivity(name, args = {}) {
   if (/edit|write|patch|create|multiedit/.test(tool)) return { activity: "editing", detail: clean ? `Editing ${clean}` : "Editing code" };
   if (/read|cat|view/.test(tool)) return { activity: "reading", detail: clean ? `Reading ${clean}` : "Reading files" };
   if (/grep|glob|find|codesearch|list/.test(tool)) return { activity: "code-search", detail: clean ? `Searching code: ${clean}` : "Searching code" };
-  if (/bash|shell|terminal|command|exec/.test(tool)) return { activity: "terminal", detail: "Running commands" };
+  if (/bash|shell|terminal|command|exec/.test(tool)) {
+    const command = typeof data.command === "string" ? data.command : "";
+    const testing = /(?:^|&&|;|\|\|)\s*(?:(?:npx|uv\s+run|poetry\s+run)\s+)?(?:(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?test\b|(?:pytest|vitest|jest)(?=\s|$)|node\s+--test\b|(?:cargo|go|dotnet|mvn|gradle)\s+test\b)/i.test(command);
+    // Forward only the activity cue; shell arguments may contain secrets.
+    return { activity: "terminal", detail: testing ? "Running tests" : "Running commands" };
+  }
   if (/task|agent|delegate/.test(tool)) return { activity: "delegating", detail: "Coordinating with agents" };
   return { activity: "working", detail: `Using ${tool.slice(0, 32)}` };
 }
