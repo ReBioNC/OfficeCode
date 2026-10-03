@@ -43,10 +43,10 @@
 
 **Interfaces:** completionTransfers(previous, current, positions): TransferSeed[]; transferPoint(from,to,progress): Point; local live transfer state holds elapsed time and parent run identity.
 
-- [ ] Write and run failing tests for observed active-child completion, real active parent, duplicate/initial snapshots, errors, new turns and interpolation endpoints.
-- [ ] Draw a transient pixel packet above the map from the last child location toward the live parent. Remove the child immediately, bound transfer count/lifetime, retain needed canvas height, and pause hidden motion. Reduced motion skips transfers.
-- [ ] Verify actual API completion in browser, disappearance, expiry, parent completion cancellation, snapshot/reload suppression and hidden-tab behavior; run full suite.
-- [ ] Document symbolic packets and commit `feat: animate completed delegation results`.
+- [x] Write and run failing tests for observed active-child completion, real active parent, duplicate/initial snapshots, errors, new turns and interpolation endpoints.
+- [x] Draw a transient pixel packet above the map from the last child location toward the live parent. Remove the child immediately, bound transfer count/lifetime, retain needed canvas height, and pause hidden motion. Reduced motion skips transfers.
+- [x] Verify actual API completion in browser, disappearance, expiry, parent completion cancellation, snapshot/reload suppression and hidden-tab behavior; run full suite.
+- [x] Document symbolic packets and commit `feat: animate completed delegation results`.
 
 ### Task 3: Room and computer inspection
 
@@ -66,3 +66,5 @@ User explicitly requested implementation of the three proposed features. Continu
 Task 1 ruling: existing plugin terminal metadata was only "Running commands", so a minimal hook change classifies recognizable test commands and forwards only "Running tests". No raw shell arguments, new activity enum or API changes are needed. Generic/ambiguous commands keep the normal terminal cue.
 
 Task 1 verification: four activity/pose tests failed before implementation; plugin safe-cue tests then reproduced missing testing metadata. Build and full npm test passed (135 tests). Browser checks confirmed four distinct computer screens, document poses, test/permission labels and immediate completion removal; screenshots inspected. Twelve avatar styles retain their dimensions and palettes.
+
+Task 2 verification: completion creation/interpolation tests failed before implementation; full npm test passed (139 tests). Controlled-clock browser verified actual child completion, moving packet, immediate character removal, hidden pause/resume, packet expiry, reload suppression, stopped-child guard and reduced motion. Ruling: packets float above the map rather than using character walk routes; they are symbolic result transfers, follow the live parent, last 1.8 seconds and are capped at 12 concurrent packets. A new parent turn cannot inherit an old transfer.

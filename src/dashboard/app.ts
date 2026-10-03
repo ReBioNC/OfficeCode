@@ -13,6 +13,7 @@ import { drawExpandedOffice } from "./studio-art";
 import { stationForRun, waitingFor, currentWorkActivity, STATION_LABEL } from "./studio-workflow";
 import { waitingDestination, type WaitingSchedule } from "./studio-waiting";
 import { activityVisual, activityPose, drawActivityScreen, drawActivityProp } from "./activity-visuals";
+import { completionTransfers, transferPoint, type TransferSeed } from "./result-transfers";
 import { STUDIO_DOORS, STUDIO_WIDTH, STUDIO_BASE_HEIGHT, STUDIO_ENTRY, STUDIO_OBSTACLES } from "./studio-map";
 import {
   BOARD_MAP, BOARD_PALETTE, CHAIR_MAP, CHAIR_PALETTE, CHAR_FRAMES,
@@ -107,6 +108,8 @@ let refreshing = false;
 let retryTimer: number | undefined;
 const agentPositions = new Map<string, { point: Point; target: Point; route: Point[]; time: number; direction: Direction; station?: OfficeStation }>();
 const waitingSchedules = new Map<string, WaitingSchedule>();
+let resultTransfers: (TransferSeed & { elapsed: number })[] = [];
+let lastTransferTime = 0;
 const studioBackground = document.createElement("canvas");
 const backgroundCtx = studioBackground.getContext("2d");
 let studioDirty = true;
@@ -410,7 +413,14 @@ async function snapshot(): Promise<void> {
         office = officeData.office;
         occupants = officeData.occupants;
         mirrorOnly = officeData.mirrorOnly === true;
+        if (mirrorOnly && !reducedMotion && document.visibilityState === "visible") {
+          const points = new Map([...agentPositions].map(([id, agent]) => [id, agent.point]));
+          const completed = completionTransfers(runs, runsData.runs, points);
+          resultTransfers = [...resultTransfers, ...completed.map(seed => ({ ...seed, elapsed: 0 }))].slice(-12);
+        }
         runs = runsData.runs;
+        const liveTurns = new Set(visibleAgents().map(run => run.id));
+        resultTransfers = resultTransfers.filter(transfer => liveTurns.has(transfer.parentId));
         queue = queueData.queue;
         spentEstimated = Number.isFinite(budgetData.spentEstimated) ? budgetData.spentEstimated : 0;
         latestFetchOkay = true;
@@ -761,8 +771,31 @@ function drawOfficeAgents(sessions: Run[], tick: number, now: number): void {
 
 function occupiedStudioHeight(): number {
   const points = [...agentPositions.entries()].filter(([id]) => studioSeats.has(id)).map(([, agent]) => agent.point.y);
-  const bottom = Math.max(0, ...points);
+  const bottom = Math.max(0, ...points, ...resultTransfers.map(transfer => transfer.from.y));
   return bottom < STUDIO_BASE_HEIGHT ? STUDIO_BASE_HEIGHT : STUDIO_BASE_HEIGHT + Math.ceil((bottom + 30 - STUDIO_BASE_HEIGHT) / 136) * 136;
+}
+
+function drawResultTransfers(now: number, sessions: readonly Run[]): void {
+  const elapsed = Math.max(0, Math.min(80, now - lastTransferTime));
+  lastTransferTime = now;
+  const live = new Map(sessions.map(run => [run.id, run]));
+  resultTransfers = resultTransfers.filter(transfer => live.has(transfer.parentId) && transfer.elapsed < 1800);
+  for (const transfer of resultTransfers) {
+    transfer.elapsed += elapsed;
+    const parent = live.get(transfer.parentId)!;
+    const to = agentPositions.get(parent.sessionId ?? parent.id)?.point ?? transfer.to;
+    const point = transferPoint(transfer.from, to, transfer.elapsed / 1800);
+    const x = snap(point.x - 10), y = snap(point.y - 34);
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, Math.min(1, (1800 - transfer.elapsed) / 250));
+    ctx.fillStyle = "#15172f"; ctx.fillRect(x + 3, y + 4, 22, 26);
+    ctx.fillStyle = "#f8be6a"; ctx.fillRect(x, y, 20, 24);
+    ctx.fillStyle = "#fff1df"; ctx.fillRect(x + 3, y + 3, 12, 18);
+    ctx.fillStyle = "#8c5d88"; ctx.fillRect(x + 5, y + 8, 8, 2); ctx.fillRect(x + 5, y + 13, 6, 2);
+    ctx.fillStyle = "#67dccb"; ctx.fillRect(x + 14, y + 16, 8, 8);
+    textOnCanvas("RESULT", Math.max(42, Math.min(x - 10, canvas.width - 94)), y - 13, theme.ui.accent, 10);
+    ctx.restore();
+  }
 }
 
 function drawSessionFloor(tick: number, now: number): void {
@@ -792,6 +825,7 @@ function drawSessionFloor(tick: number, now: number): void {
   }
   drawStudioDoors(now);
   drawOfficeAgents(sessions, tick, now);
+  drawResultTransfers(now, sessions);
   if (showRelations) {
     ctx.save(); ctx.strokeStyle = theme.ui.sage; ctx.globalAlpha = .55; ctx.setLineDash([4, 5]);
     for (const child of sessions) {
@@ -839,6 +873,7 @@ function scheduleAnimation(): void {
   animationFrame = window.requestAnimationFrame((now) => {
     animationFrame = undefined;
     const moving = [...agentPositions.values()].some((agent) => agent.route.length > 0)
+      || resultTransfers.length > 0
       || [...doorOpenness.values()].some((fraction) => fraction > 0 && fraction < 1);
     if (now - lastPaint >= (moving ? 15 : 80)) {
       lastPaint = now;
@@ -878,5 +913,6 @@ document.addEventListener("visibilitychange", () => {
   }
   for (const agent of agentPositions.values()) agent.time = now;
   lastDoorTime = now;
+  lastTransferTime = now;
   if (document.visibilityState === "visible") { updateStudioClock(); draw(now); void snapshot(); }
 });
