@@ -205,6 +205,9 @@ describe("opencode plugin", () => {
       [1, "git status", "Running commands"],
       [2, "echo npm test", "Running commands"],
       [3, "npm install jest", "Running commands"],
+      [5, "echo 'example && pytest -q'", "Running commands"],
+      [6, "printf '%s\\n' 'example; npm test'", "Running commands"],
+      [7, "cd 'my workspace' && npm test", "Running tests"],
       [4, "npx vitest run", "Running tests"],
     ] as const) {
       const sid = `test-cue-${index}`;

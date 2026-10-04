@@ -1,6 +1,19 @@
 import { currentWorkActivity, type WorkflowRun } from "./studio-workflow";
 import type { FrameName } from "./sprites";
 
+// Exclude quoted data and escaped separators from command classification.
+function unquotedCommand(command: string): string {
+  let quote = "", escaped = false, result = "";
+  for (const char of command) {
+    if (escaped) { escaped = false; result += " "; continue; }
+    if (quote !== "'" && (char === "\\" || char === "`")) { escaped = true; result += " "; continue; }
+    if (quote) { if (char === quote) quote = ""; result += " "; continue; }
+    if (char === "'" || char === '"') { quote = char; result += " "; continue; }
+    result += char;
+  }
+  return result;
+}
+
 export type ActivityVisual = "editing" | "reading" | "search" | "web" | "testing" | "terminal" | "thinking" | "waiting" | "approval" | "idle";
 export function activityVisual(run: WorkflowRun, waiting = false): ActivityVisual {
   const activity = currentWorkActivity(run);
@@ -14,7 +27,7 @@ export function activityVisual(run: WorkflowRun, waiting = false): ActivityVisua
     const tools = (run.activeTools ?? []).filter(tool => tool.activity !== "delegating");
     const detail = tools[tools.length - 1]?.detail ?? run.detail ?? "";
     // This is a running-command cue, never a test result or progress estimate.
-    const testing = detail === "Running tests" || /(?:^|&&|;|\|\|)\s*(?:(?:npx|uv\s+run|poetry\s+run)\s+)?(?:(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?test\b|(?:pytest|vitest|jest)(?=\s|$)|node\s+--test\b|(?:cargo|go|dotnet|mvn|gradle)\s+test\b)/i.test(detail);
+    const testing = detail === "Running tests" || /(?:^|&&|;|\|\|)\s*(?:(?:npx|uv\s+run|poetry\s+run)\s+)?(?:(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?test\b|(?:pytest|vitest|jest)(?=\s|$)|node\s+--test\b|(?:cargo|go|dotnet|mvn|gradle)\s+test\b)/i.test(unquotedCommand(detail));
     return testing ? "testing" : "terminal";
   }
   if (activity === "reading") return "reading";

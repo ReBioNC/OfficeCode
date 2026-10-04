@@ -13,7 +13,7 @@ it("shows a testing indicator only for a terminal tool running a recognizable te
   for (const detail of ["Running tests", "npm test", "pnpm run test:unit", "node --test test/*.js", "pytest -q", "cargo test", "go test ./...", "vitest run", "dotnet test"]) {
     assert.equal(activityVisual({ ...run, activity: "terminal", detail }), "testing", detail);
   }
-  for (const detail of ["git status", "echo npm test", "npm install jest", "cat jest.config.js"]) assert.equal(activityVisual({ ...run, activity: "terminal", detail }), "terminal");
+  for (const detail of ["git status", "echo npm test", "npm install jest", "cat jest.config.js", "echo 'example && pytest -q'", "printf '%s\\n' 'example; npm test'"]) assert.equal(activityVisual({ ...run, activity: "terminal", detail }), "terminal");
   assert.equal(activityVisual({ ...run, activity: "reading", detail: "Read npm test documentation" }), "reading");
 });
 it("keeps permission and actual local work ahead of decorative wait/search effects", () => {

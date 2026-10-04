@@ -109,6 +109,19 @@ function sessionIdOf(value) {
   return p?.sessionID ?? p?.sessionId ?? p?.session_id ?? p?.part?.sessionID ?? p?.info?.id ?? p?.id ?? null;
 }
 
+// Exclude quoted data and escaped separators from command classification.
+function unquotedCommand(command) {
+  let quote = "", escaped = false, result = "";
+  for (const char of command) {
+    if (escaped) { escaped = false; result += " "; continue; }
+    if (quote !== "'" && (char === "\\" || char === "`")) { escaped = true; result += " "; continue; }
+    if (quote) { if (char === quote) quote = ""; result += " "; continue; }
+    if (char === "'" || char === '"') { quote = char; result += " "; continue; }
+    result += char;
+  }
+  return result;
+}
+
 function toolActivity(name, args = {}) {
   const tool = String(name || "tool").toLowerCase();
   const data = args && typeof args === "object" ? args : {};
@@ -123,7 +136,7 @@ function toolActivity(name, args = {}) {
   if (/grep|glob|find|codesearch|list/.test(tool)) return { activity: "code-search", detail: clean ? `Searching code: ${clean}` : "Searching code" };
   if (/bash|shell|terminal|command|exec/.test(tool)) {
     const command = typeof data.command === "string" ? data.command : "";
-    const testing = /(?:^|&&|;|\|\|)\s*(?:(?:npx|uv\s+run|poetry\s+run)\s+)?(?:(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?test\b|(?:pytest|vitest|jest)(?=\s|$)|node\s+--test\b|(?:cargo|go|dotnet|mvn|gradle)\s+test\b)/i.test(command);
+    const testing = /(?:^|&&|;|\|\|)\s*(?:(?:npx|uv\s+run|poetry\s+run)\s+)?(?:(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?test\b|(?:pytest|vitest|jest)(?=\s|$)|node\s+--test\b|(?:cargo|go|dotnet|mvn|gradle)\s+test\b)/i.test(unquotedCommand(command));
     // Forward only the activity cue; shell arguments may contain secrets.
     return { activity: "terminal", detail: testing ? "Running tests" : "Running commands" };
   }
