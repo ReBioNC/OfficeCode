@@ -54,10 +54,10 @@
 
 **Interfaces:** roomAt(point,height), roomResidents(roomId,positions), hitComputer(point,seats,extraDesks) reuse shared geometry. attachPanelLayout returns showActivity() for explicit inspection actions.
 
-- [ ] Write and run failing tests for all rooms, corridors, overflow, monitor hit boxes and unique current occupants.
-- [ ] Add map/keyboard room selection, room highlight and live occupant inspector. Agent hits precede computers; computers precede rooms. Empty computers show a clear local notice; selecting opens the hidden activity panel. Preserve click suppression after pan/pinch.
-- [ ] Verify scaled clicks, occupied/empty desks, room selection, hidden panel restore, keyboard focus, moving/completed occupants and mobile controls; run full suite.
-- [ ] Update README/guide and commit `feat: inspect studio rooms and computers`.
+- [x] Write and run failing tests for all rooms, corridors, overflow, monitor hit boxes and unique current occupants.
+- [x] Add map/keyboard room selection, room highlight and live occupant inspector. Agent hits precede computers; computers precede rooms. Empty computers show a clear local notice; selecting opens the hidden activity panel. Preserve click suppression after pan/pinch.
+- [x] Verify scaled clicks, occupied/empty desks, room selection, hidden panel restore, keyboard focus, moving/completed occupants and mobile controls; run full suite.
+- [x] Update README/guide and commit `feat: inspect studio rooms and computers`.
 
 ## Execution notes
 
@@ -68,3 +68,7 @@ Task 1 ruling: existing plugin terminal metadata was only "Running commands", so
 Task 1 verification: four activity/pose tests failed before implementation; plugin safe-cue tests then reproduced missing testing metadata. Build and full npm test passed (135 tests). Browser checks confirmed four distinct computer screens, document poses, test/permission labels and immediate completion removal; screenshots inspected. Twelve avatar styles retain their dimensions and palettes.
 
 Task 2 verification: completion creation/interpolation tests failed before implementation; full npm test passed (139 tests). Controlled-clock browser verified actual child completion, moving packet, immediate character removal, hidden pause/resume, packet expiry, reload suppression, stopped-child guard and reduced motion. Ruling: packets float above the map rather than using character walk routes; they are symbolic result transfers, follow the live parent, last 1.8 seconds and are capped at 12 concurrent packets. A new parent turn cannot inherit an old transfer.
+
+Task 3 verification: five geometry tests cover rooms, corridors, computer assignments and 48-agent overflow. Build and full npm test passed (144 tests). Browser checks verified scaled clicks, room highlighting, empty computers, keyboard inspection, hidden-panel restore, escaped prompts, mobile layout, pan suppression, overflow and moving occupants. A focused regression reproduced stale Current work/Focus agent state when a resident departed; drawing now refreshes panels only when the room-derived focus changes. Browser regression passed after the fix.
+
+Final review: approved after both findings were fixed. Quoted shell data reproduced false test cues before the fix; a conservative quote/escape scanner now excludes such text while recognizing a real test after a quoted directory. Unit/plugin regressions and the full suite passed. This fix was committed separately. The installed global plugin was updated and its SHA256 matched the source.
