@@ -24,7 +24,7 @@ export function readPanelLayout(raw: string | null): PanelLayout {
 }
 
 /** Presentation preferences stay in this browser and never change OpenCode state. */
-export function attachPanelLayout(): void {
+export function attachPanelLayout(): { showActivity: () => void } {
   const app = document.querySelector(".app") as HTMLElement;
   const panel = document.getElementById("activityCenter") as HTMLElement;
   const divider = document.getElementById("activityDivider") as HTMLElement;
@@ -106,4 +106,5 @@ export function attachPanelLayout(): void {
   window.addEventListener("resize", () => { finishDrag(true); apply(); });
   window.addEventListener("blur", () => finishDrag(true));
   apply();
+  return { showActivity: () => { if (!state.collapsed) return; state.collapsed = false; apply(); save(); } };
 }

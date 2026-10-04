@@ -199,6 +199,25 @@ describe("opencode plugin", () => {
     const searched = await drive([{ call: "tool.execute.before", input: { sessionID: sid, tool: "websearch" }, output: { args: { query: "search docs" } } }]);
     assert.equal(searched.runs.find((entry) => entry.sessionId === sid)?.activity, "web-search");
   });
+  it("mirrors a safe running-test cue without forwarding shell commands or arguments", async () => {
+    for (const [index, command, expected] of [
+      [0, "npm run test:unit -- --token=private-value", "Running tests"],
+      [1, "git status", "Running commands"],
+      [2, "echo npm test", "Running commands"],
+      [3, "npm install jest", "Running commands"],
+      [5, "echo 'example && pytest -q'", "Running commands"],
+      [6, "printf '%s\\n' 'example; npm test'", "Running commands"],
+      [7, "cd 'my workspace' && npm test", "Running tests"],
+      [4, "npx vitest run", "Running tests"],
+    ] as const) {
+      const sid = `test-cue-${index}`;
+      const out = await drive([{ call: "tool.execute.before", input: { sessionID: sid, tool: "bash", callID: "command" }, output: { args: { command } } }]);
+      const current = out.runs.find(entry => entry.sessionId === sid);
+      assert.equal(current?.activity, "terminal");
+      assert.equal(current?.detail, expected);
+      assert.ok(!JSON.stringify(current).includes("private-value"));
+    }
+  });
   it("refreshes the feature room title and agent from OpenCode events", async () => {
     const sid = "plug-title";
     const out = await drive([

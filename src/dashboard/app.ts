@@ -12,6 +12,9 @@ import { advanceTimedRoute, planRoute, type Direction, type Point } from "./agen
 import { drawExpandedOffice } from "./studio-art";
 import { stationForRun, waitingFor, currentWorkActivity, STATION_LABEL } from "./studio-workflow";
 import { waitingDestination, type WaitingSchedule } from "./studio-waiting";
+import { activityVisual, activityPose, drawActivityScreen, drawActivityProp } from "./activity-visuals";
+import { completionTransfers, transferPoint, type TransferSeed } from "./result-transfers";
+import { studioRooms, roomAt, roomResidents, hitComputer } from "./studio-interactions";
 import { STUDIO_DOORS, STUDIO_WIDTH, STUDIO_BASE_HEIGHT, STUDIO_ENTRY, STUDIO_OBSTACLES } from "./studio-map";
 import {
   BOARD_MAP, BOARD_PALETTE, CHAIR_MAP, CHAIR_PALETTE, CHAR_FRAMES,
@@ -87,7 +90,7 @@ const queueUl = document.getElementById("queue") as HTMLUListElement;
 const crewUl = document.getElementById("crew") as HTMLUListElement;
 const connection = document.getElementById("connection") as HTMLSpanElement;
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-attachPanelLayout();
+const panelLayout = attachPanelLayout();
 
 let office: OfficeDoc = { building: "HQ", rooms: [], desks: [], hallways: [], objects: [] };
 let mirrorOnly = false;
@@ -106,6 +109,8 @@ let refreshing = false;
 let retryTimer: number | undefined;
 const agentPositions = new Map<string, { point: Point; target: Point; route: Point[]; time: number; direction: Direction; station?: OfficeStation }>();
 const waitingSchedules = new Map<string, WaitingSchedule>();
+let resultTransfers: (TransferSeed & { elapsed: number })[] = [];
+let lastTransferTime = 0;
 const studioBackground = document.createElement("canvas");
 const backgroundCtx = studioBackground.getContext("2d");
 let studioDirty = true;
@@ -119,6 +124,9 @@ let geometry = studioGeometry(studioSeats);
 let studioPeriod = getStudioPeriod(new Date());
 let theme = STUDIO_THEMES[studioPeriod];
 let selectedRunId: string | undefined;
+let selectedRoomId: string | undefined;
+let roomNotice = "";
+let lastRoomSignature = "";
 let showRelations = false;
 const relationsToggle = document.getElementById("toggleRelations") as HTMLButtonElement;
 relationsToggle.onclick = () => {
@@ -128,24 +136,109 @@ relationsToggle.onclick = () => {
   draw();
 };
 const camera = attachStudioCamera(canvas, () => {
-  const focus = resolveFocus(runs, visibleAgents(), selectedRunId);
+  const focus = currentFocus();
   return focus ? agentPositions.get(focus.sessionId ?? focus.id)?.point : undefined;
 });
 
 function selectAgent(runId: string): void {
+  if (selectedRoomId && !currentRoomRuns().some(run => run.id === runId)) { selectedRoomId = undefined; roomNotice = ""; }
   selectedRunId = runId;
+  panelLayout.showActivity();
   renderPanels();
   draw();
 }
 
 canvas.addEventListener("click", (event) => {
-  if (camera.suppressClick()) return;
+  if (!mirrorOnly || camera.suppressClick()) return;
   const bounds = canvas.getBoundingClientRect();
+  const point = { x: (event.clientX - bounds.left) * canvas.width / bounds.width, y: (event.clientY - bounds.top) * canvas.height / bounds.height };
   const sessionId = hitAgent([...agentPositions].map(([id, agent]) => ({ id, ...agent.point })),
-    (event.clientX - bounds.left) * canvas.width / bounds.width, (event.clientY - bounds.top) * canvas.height / bounds.height);
+    point.x, point.y);
   const run = visibleAgents().find((entry) => (entry.sessionId ?? entry.id) === sessionId);
-  if (run) selectAgent(run.id);
+  if (run) { selectAgent(run.id); return; }
+  const computer = hitComputer(point, studioSeats, geometry.extraDesks);
+  if (computer) {
+    const owner = visibleAgents().find(entry => (entry.sessionId ?? entry.id) === computer.sessionId);
+    if (owner) { selectAgent(owner.id); return; }
+    const room = roomAt(point, geometry.height);
+    if (room) selectRoom(room.id, "This computer is unoccupied. No active agent is assigned to it.");
+    return;
+  }
+  const room = roomAt(point, geometry.height);
+  if (room) selectRoom(room.id);
 });
+
+canvas.addEventListener("pointermove", (event) => {
+  if (!mirrorOnly || camera.suppressClick()) return;
+  const bounds = canvas.getBoundingClientRect();
+  const point = { x: (event.clientX - bounds.left) * canvas.width / bounds.width, y: (event.clientY - bounds.top) * canvas.height / bounds.height };
+  const computer = hitComputer(point, studioSeats, geometry.extraDesks), room = roomAt(point, geometry.height);
+  canvas.style.cursor = computer || room ? "pointer" : "";
+  canvas.title = computer ? "Click to inspect this computer" : room ? `Inspect ${room.name.toLowerCase()}` : "Drag to pan · pinch to zoom";
+});
+
+function currentRoomRuns(): Run[] {
+  if (!selectedRoomId) return [];
+  const positions = new Map([...agentPositions].map(([id, agent]) => [id, agent.point]));
+  const residents = new Set(roomResidents(selectedRoomId, positions, geometry.height));
+  return visibleAgents().filter(run => residents.has(run.sessionId ?? run.id));
+}
+
+function currentFocus(): Run | undefined {
+  return selectedRoomId && !selectedRunId ? currentRoomRuns()[0] : resolveFocus(runs, visibleAgents(), selectedRunId);
+}
+
+function selectRoom(id?: string, notice = ""): void {
+  selectedRoomId = id;
+  selectedRunId = undefined;
+  roomNotice = notice;
+  panelLayout.showActivity();
+  renderPanels(); draw();
+}
+
+function renderRoomControls(): void {
+  const controls = document.getElementById("roomControls") as HTMLElement;
+  controls.hidden = !mirrorOnly;
+  const rooms = studioRooms(geometry.height);
+  if (selectedRoomId && !rooms.some(room => room.id === selectedRoomId)) { selectedRoomId = undefined; roomNotice = ""; }
+  controls.replaceChildren(...[{ id: undefined, name: "ALL ROOMS" }, ...rooms].map(room => {
+    const button = element("button", "", room.name.toLowerCase().replace(/(^|\s)\S/g, value => value.toUpperCase()));
+    button.type = "button"; button.dataset.focusKey = `room:${room.id ?? "all"}`;
+    button.setAttribute("aria-pressed", String(room.id === selectedRoomId));
+    button.onclick = () => selectRoom(room.id);
+    return button;
+  }));
+  renderRoomInspector();
+}
+
+let lastPanelFocusId: string | undefined;
+
+function renderRoomInspector(syncFocus = false): void {
+  const section = document.getElementById("roomSection") as HTMLElement;
+  const room = studioRooms(geometry.height).find(room => room.id === selectedRoomId);
+  section.hidden = !mirrorOnly || !room;
+  if (!room) { lastRoomSignature = ""; return; }
+  if (syncFocus && currentFocus()?.id !== lastPanelFocusId) { renderPanels(); return; }
+  const residents = currentRoomRuns();
+  const signature = JSON.stringify([room.id, roomNotice, selectedRunId, residents.map(run => [run.id, run.role, run.prompt, activityOf(run).label, run.detail])]);
+  if (signature === lastRoomSignature) return;
+  lastRoomSignature = signature;
+  const focusedKey = (document.activeElement as HTMLElement | null)?.dataset.focusKey;
+  (document.getElementById("roomHeading") as HTMLElement).textContent = room.name;
+  (document.getElementById("roomCount") as HTMLElement).textContent = `${residents.length} ${residents.length === 1 ? "agent" : "agents"}`;
+  (document.getElementById("roomSummary") as HTMLElement).textContent = roomNotice || (residents.length ? "Agents currently in this room. Select one to inspect its work." : "No agents currently in this room.");
+  const list = document.getElementById("roomAgents") as HTMLElement;
+  list.replaceChildren(...residents.map(run => {
+    const role = displayWorkRole(run, visibleAgents().length === 1);
+    const button = element("button", "room-agent");
+    button.type = "button"; button.dataset.focusKey = `resident:${run.id}`;
+    button.setAttribute("aria-pressed", String(currentFocus()?.id === run.id));
+    button.append(element("strong", "", `${role} · ${activityOf(run).label}`), element("span", "", run.prompt));
+    button.onclick = () => selectAgent(run.id);
+    return button;
+  }));
+  if (focusedKey) list.querySelectorAll<HTMLElement>("[data-focus-key]").forEach(node => { if (node.dataset.focusKey === focusedKey) node.focus({ preventScroll: true }); });
+}
 
 function updateStudioClock(): boolean {
   const date = new Date();
@@ -187,6 +280,7 @@ function activityOf(run: Run): { label: string; persona: string; station: string
     return {label:`Waiting for ${roles.length>2?`${dependencies.length} agents`:roles.join(" & ")}`,persona:"Awaiting delegated work",station:"Waiting lounge",color:"#f8be6a"};
   }
   const activity=ACTIVITY[currentWorkActivity(run)] ?? ACTIVITY[run.state] ?? ACTIVITY.working;
+  if (activityVisual(run) === "testing") return { ...activity, label: "Running tests", persona: "Test operator", station: STATION_LABEL[stationFor(run)] };
   return {...activity,station:STATION_LABEL[stationFor(run)]};
 }
 
@@ -215,7 +309,9 @@ function renderPanels(): void {
   const nextGeometry = studioGeometry(studioSeats, occupiedStudioHeight());
   if (geometry.height !== nextGeometry.height) studioDirty = true;
   geometry = nextGeometry;
-  const focus = resolveFocus(runs, sessions, selectedRunId);
+  renderRoomControls();
+  const focus = currentFocus();
+  lastPanelFocusId = focus?.id;
   relationsToggle.hidden = !mirrorOnly;
   (document.getElementById("zoomFocus") as HTMLButtonElement).disabled = !focus || !sessions.some((run) => run.id === focus.id);
   (document.getElementById("timelineSection") as HTMLElement).hidden = !mirrorOnly;
@@ -260,7 +356,7 @@ function renderPanels(): void {
       const source = resolveWorkRole(focus, sessions.length === 1 && sessions[0]?.id === focus.id).source;
       (document.getElementById("focusRole") as HTMLElement).textContent += source === "inferred" ? " · inferred role" : source === "single-agent" ? " · single-agent role" : "";
     }
-    (document.getElementById("focusTask") as HTMLElement).textContent = focus?.prompt || "Waiting for a session";
+    (document.getElementById("focusTask") as HTMLElement).textContent = focus?.prompt || (selectedRoomId ? "No agents in this room" : "Waiting for a session");
     (document.getElementById("focusActivity") as HTMLElement).textContent = focus ? activityOf(focus).label : "No activity yet";
     (document.getElementById("focusDetail") as HTMLElement).textContent = focus?.detail || "Start working on a feature in OpenCode.";
     const tools = document.getElementById("activeTools") as HTMLElement;
@@ -408,7 +504,14 @@ async function snapshot(): Promise<void> {
         office = officeData.office;
         occupants = officeData.occupants;
         mirrorOnly = officeData.mirrorOnly === true;
+        if (mirrorOnly && !reducedMotion && document.visibilityState === "visible") {
+          const points = new Map([...agentPositions].map(([id, agent]) => [id, agent.point]));
+          const completed = completionTransfers(runs, runsData.runs, points);
+          resultTransfers = [...resultTransfers, ...completed.map(seed => ({ ...seed, elapsed: 0 }))].slice(-12);
+        }
         runs = runsData.runs;
+        const liveTurns = new Set(visibleAgents().map(run => run.id));
+        resultTransfers = resultTransfers.filter(transfer => liveTurns.has(transfer.parentId));
         queue = queueData.queue;
         spentEstimated = Number.isFinite(budgetData.spentEstimated) ? budgetData.spentEstimated : 0;
         latestFetchOkay = true;
@@ -721,16 +824,16 @@ function drawOfficeAgents(sessions: Run[], tick: number, now: number): void {
     const arrived = !moving && Math.hypot(agent.point.x - feet.x, agent.point.y - feet.y) < 2;
     const seated = arrived && seat.seated;
     const activity = activityOf(run);
+    const visual = activityVisual(run, station === "waiting");
+    const phase = reducedMotion ? 0 : Math.floor(now / 180) % 4;
     const workRole = displayWorkRole(run, sessions.length === 1);
     const palette = agentPalette(workRole, id);
-    if (run.id === selectedRunId) {
+    if (run.id === selectedRunId || selectedRoomId && roomAt(agent.point, canvas.height)?.id === selectedRoomId) {
       ctx.strokeStyle = theme.ui.sage; ctx.lineWidth = 2;
       ctx.strokeRect(x - 5, y - 3, 46, 48);
     }
     if (computer && arrived) {
-      ctx.fillStyle = tick % 2 === 0 ? "#b5fff0" : "#67dccb";
-      ctx.fillRect(computer[0] + 18, computer[1] - 8, 13, 2);
-      ctx.fillRect(computer[0] + 18, computer[1] - 3, 9, 2);
+      drawActivityScreen(ctx, visual, computer, phase);
     }
     if (station === "approval") {
       ctx.fillStyle = tick % 2 === 0 ? "#ffd594" : "#ff827d"; ctx.fillRect(x+36,y-8,7,7);
@@ -739,15 +842,10 @@ function drawOfficeAgents(sessions: Run[], tick: number, now: number): void {
     ctx.fillRect(x - 5, y + 14 * scale - 4, 12 * scale + 10, 4);
     if (seated && station!=="waiting") drawOccupiedChair(x, y, scale, false);
     const frame = moving ? WALK_FRAMES[agent.direction][Math.floor(now / 90) % 8]
-      : CHAR_FRAMES[station === "thinking" || station === "delegating" ? (tick % 2 === 0 ? "talkA" : "talkB")
-        : station==="waiting" ? (seated?"talkA":"idle") : seated ? (tick % 2 === 0 ? "typeA" : "typeB") : frameForState(run.state, tick)];
-    drawSprite(ctx, avatarFrame(id, frame, moving ? agent.direction : seated && computer ? "north" : "south"), palette, x, y, scale);
+      : CHAR_FRAMES[arrived ? activityPose(visual, seated, phase) : "idle"];
+    drawSprite(ctx, avatarFrame(id, frame, moving ? agent.direction : seated && computer && !["reading", "search"].includes(visual) ? "north" : "south"), palette, x, y, scale);
     if (seated && station!=="waiting") drawOccupiedChair(x, y, scale, true);
-    if ((station === "reading" || station==="review" && ["reading","code-search"].includes(currentWorkActivity(run))) && arrived) {
-      ctx.fillStyle = "#fff1df"; ctx.fillRect(x + 8, y + 27, 22, 14);
-      ctx.fillStyle = "#8ea8f1"; ctx.fillRect(x + 18, y + 29, 2, 10);
-      ctx.fillStyle = "#776f9d"; ctx.fillRect(x + 11, y + 32 + tick % 2 * 3, 6, 2);
-    }
+    if (arrived) drawActivityProp(ctx, visual, x, y, phase);
     if (run.state === "thinking" && planningCount === 1 && arrived) {
       ctx.fillStyle = "#fff7dd";
       for (let dot = 0; dot < 3; dot++) ctx.fillRect(x + 36 + dot * 7, y - 10 - (tick + dot) % 2 * 3, 4, 4);
@@ -764,8 +862,31 @@ function drawOfficeAgents(sessions: Run[], tick: number, now: number): void {
 
 function occupiedStudioHeight(): number {
   const points = [...agentPositions.entries()].filter(([id]) => studioSeats.has(id)).map(([, agent]) => agent.point.y);
-  const bottom = Math.max(0, ...points);
+  const bottom = Math.max(0, ...points, ...resultTransfers.map(transfer => transfer.from.y));
   return bottom < STUDIO_BASE_HEIGHT ? STUDIO_BASE_HEIGHT : STUDIO_BASE_HEIGHT + Math.ceil((bottom + 30 - STUDIO_BASE_HEIGHT) / 136) * 136;
+}
+
+function drawResultTransfers(now: number, sessions: readonly Run[]): void {
+  const elapsed = Math.max(0, Math.min(80, now - lastTransferTime));
+  lastTransferTime = now;
+  const live = new Map(sessions.map(run => [run.id, run]));
+  resultTransfers = resultTransfers.filter(transfer => live.has(transfer.parentId) && transfer.elapsed < 1800);
+  for (const transfer of resultTransfers) {
+    transfer.elapsed += elapsed;
+    const parent = live.get(transfer.parentId)!;
+    const to = agentPositions.get(parent.sessionId ?? parent.id)?.point ?? transfer.to;
+    const point = transferPoint(transfer.from, to, transfer.elapsed / 1800);
+    const x = snap(point.x - 10), y = snap(point.y - 34);
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, Math.min(1, (1800 - transfer.elapsed) / 250));
+    ctx.fillStyle = "#15172f"; ctx.fillRect(x + 3, y + 4, 22, 26);
+    ctx.fillStyle = "#f8be6a"; ctx.fillRect(x, y, 20, 24);
+    ctx.fillStyle = "#fff1df"; ctx.fillRect(x + 3, y + 3, 12, 18);
+    ctx.fillStyle = "#8c5d88"; ctx.fillRect(x + 5, y + 8, 8, 2); ctx.fillRect(x + 5, y + 13, 6, 2);
+    ctx.fillStyle = "#67dccb"; ctx.fillRect(x + 14, y + 16, 8, 8);
+    textOnCanvas("RESULT", Math.max(42, Math.min(x - 10, canvas.width - 94)), y - 13, theme.ui.accent, 10);
+    ctx.restore();
+  }
 }
 
 function drawSessionFloor(tick: number, now: number): void {
@@ -784,17 +905,27 @@ function drawSessionFloor(tick: number, now: number): void {
     studioDirty = false;
   }
   if (backgroundCtx) ctx.drawImage(studioBackground, 0, 0);
+  const selectedRoom = studioRooms(canvas.height).find(room => room.id === selectedRoomId);
+  if (selectedRoom) {
+    ctx.save(); ctx.globalAlpha = .08; ctx.fillStyle = theme.ui.sage;
+    ctx.fillRect(selectedRoom.x + 8, selectedRoom.y + 8, selectedRoom.w - 16, selectedRoom.h - 16);
+    ctx.globalAlpha = 1; ctx.strokeStyle = theme.ui.sage; ctx.lineWidth = 3;
+    ctx.strokeRect(selectedRoom.x + 8, selectedRoom.y + 8, selectedRoom.w - 16, selectedRoom.h - 16); ctx.restore();
+  }
   if (sessions.length === 0) {
     agentPositions.clear();
     waitingSchedules.clear();
     doorOpenness.clear();
     drawStudioDoors(now);
+    renderRoomInspector(true);
     plate("STUDIO STANDBY", 1080, 974, "#f8be6a");
     textOnCanvas("Start a task in OpenCode.", 1080, 1010, theme.ui.ink, 12);
     return;
   }
   drawStudioDoors(now);
   drawOfficeAgents(sessions, tick, now);
+  drawResultTransfers(now, sessions);
+  renderRoomInspector(true);
   if (showRelations) {
     ctx.save(); ctx.strokeStyle = theme.ui.sage; ctx.globalAlpha = .55; ctx.setLineDash([4, 5]);
     for (const child of sessions) {
@@ -842,6 +973,7 @@ function scheduleAnimation(): void {
   animationFrame = window.requestAnimationFrame((now) => {
     animationFrame = undefined;
     const moving = [...agentPositions.values()].some((agent) => agent.route.length > 0)
+      || resultTransfers.length > 0
       || [...doorOpenness.values()].some((fraction) => fraction > 0 && fraction < 1);
     if (now - lastPaint >= (moving ? 15 : 80)) {
       lastPaint = now;
@@ -881,5 +1013,6 @@ document.addEventListener("visibilitychange", () => {
   }
   for (const agent of agentPositions.values()) agent.time = now;
   lastDoorTime = now;
+  lastTransferTime = now;
   if (document.visibilityState === "visible") { updateStudioClock(); draw(now); void snapshot(); }
 });
