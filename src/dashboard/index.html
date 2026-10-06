@@ -175,6 +175,10 @@
     .visual-settings .bubble-setting { display:flex; align-items:center; min-height:32px; }
     #motionHint { flex-basis:100%; margin:0; font:10px/1.4 "Courier New",monospace; color:var(--muted); }
     .crew-name { font-size:calc(12px * var(--agent-label-scale,1)); }
+  .completed-tasks { list-style:none; padding:0; margin:0; display:grid; gap:10px; }
+    .task-summary { padding:12px; border:1px solid var(--line); background:var(--light); overflow-wrap:anywhere; font-size:12px; }
+    .task-summary strong { display:block; margin-bottom:8px; }
+    .summary-meta { font:11px/1.5 "Courier New",monospace; color:var(--muted); margin:5px 0; }
   </style>
 </head>
 <body>
@@ -205,6 +209,7 @@
         <section id="teamSection" class="panel-section" aria-labelledby="teamHeading" hidden><div class="section-heading"><h3 id="teamHeading">Delegation</h3><span>Live team</span></div><ul id="teamList" class="team-list"></ul></section>
         <details open id="timelineSection" class="panel-section" aria-labelledby="timelineHeading" hidden><summary class="section-heading"><h3 id="timelineHeading">Workflow timeline</h3><span>Expand / collapse</span></summary><p id="timelineSummary" class="team-parent"></p><ol id="timelineList" class="timeline-list"></ol></details>
         <section class="panel-section" aria-labelledby="activityTitle"><div class="section-heading"><h3 id="activityTitle">Recent activity</h3><span id="activityCount">0 runs</span></div><ul id="runs" class="activity-list" aria-live="polite"><li class="empty">No activity yet. Start a task in OpenCode.</li></ul></section>
+        <details id="completedSection" class="panel-section" hidden open><summary class="section-heading"><h3>Completed tasks</h3><span>Latest 8</span></summary><ul id="completedTasks" class="completed-tasks" aria-label="Completed task summaries"></ul></details>
         <section class="panel-section" aria-labelledby="queueTitle"><div class="section-heading"><h3 id="queueTitle">Queue</h3><span id="queueCount">0 tasks</span></div><ul id="queue" class="queue-list" aria-live="polite"></ul><p id="queueEmpty" class="empty">No tasks waiting.</p></section>
         <section class="panel-section guide" aria-labelledby="guideTitle"><div class="section-heading"><h3 id="guideTitle">From OpenCode</h3><span>Commands</span></div><p>Find the dashboard URL with <code>/dashboard</code>. Rooms, agents, and activity follow live OpenCode events.</p><div class="command-code"><code>/dashboard</code></div></section>
       </div>

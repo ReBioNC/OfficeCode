@@ -15,7 +15,8 @@ import { waitingDestination, type WaitingSchedule } from "./studio-waiting";
 import { activityVisual, activityPose, drawActivityScreen, drawActivityProp } from "./activity-visuals";
 import { activityBubble } from "./activity-bubble";
 import { attentionFor, attentionRuns } from "./agent-attention";
-import { loadPreferences, savePreferences, normalizePreferences, chosenPeriod, motionPolicy, type VisualPreferences } from "./visual-preferences";
+import { loadPreferences, savePreferences, normalizePreferences, chosenPeriod, motionPolicy } from "./visual-preferences";
+import { taskSummary } from "./task-summary";
 import { completionTransfers, transferPoint, type TransferSeed } from "./result-transfers";
 import { studioRooms, roomAt, roomResidents, hitComputer } from "./studio-interactions";
 import { STUDIO_DOORS, STUDIO_WIDTH, STUDIO_BASE_HEIGHT, STUDIO_ENTRY, STUDIO_OBSTACLES } from "./studio-map";
@@ -373,10 +374,31 @@ function renderAttention(connectionIssue?: string): void {
   if (focusedKey) list.querySelectorAll<HTMLElement>("[data-focus-key]").forEach(node => { if (node.dataset.focusKey === focusedKey) node.focus({ preventScroll: true }); });
 }
 
+function renderTaskSummaries(): void {
+  const completed = runs.filter(run => run.state === "done" || run.state === "blocked").slice(-8).reverse();
+  (document.getElementById("completedSection") as HTMLElement).hidden = completed.length === 0;
+  const list = document.getElementById("completedTasks") as HTMLElement;
+  list.replaceChildren(...completed.map(run => {
+    const summary = taskSummary(run, runs);
+    const item = element("li", "task-summary");
+    item.dataset.runId = run.id;
+    item.append(element("strong", "", short(run.prompt, 120) || run.id),
+      element("p", "summary-meta", `${run.state === "done" ? "Completed" : "Stopped"} · ${summary.duration} · ${summary.subagents} observed subagents`),
+      element("p", "summary-meta", `${summary.tools} observed tool results · ${summary.tools - summary.errors} completed · ${summary.errors} failed`));
+    const activities = Object.entries(summary.activities).map(([activity, count]) => `${ACTIVITY[activity]?.label ?? activity}: ${count}`);
+    if (activities.length) item.append(element("p", "summary-meta", activities.join(" · ")));
+    item.append(element("p", "team-parent", summary.partial ? "Partial summary: earlier workflow steps were truncated." : "Based on recorded events. Tool results can be incomplete; subagents count unique descendant sessions in this turn."));
+    const inspect = element("button", "inspect-button", "View workflow");
+    inspect.type = "button"; inspect.dataset.focusKey = `summary:${run.id}`; inspect.onclick = () => selectAgent(run.id);
+    item.append(inspect); return item;
+  }));
+}
+
 function renderPanels(): void {
   const focusedKey = (document.activeElement as HTMLElement | null)?.dataset.focusKey;
   const runById = new Map(runs.map((run) => [run.id, run]));
   const sessions = mirrorOnly ? visibleAgents() : [];
+  renderTaskSummaries();
   studioSeats = allocateStudioSeats(sessions.map((run) => ({ id: run.sessionId ?? run.id, station: stationFor(run) })), studioSeats);
   const nextGeometry = studioGeometry(studioSeats, occupiedStudioHeight());
   if (geometry.height !== nextGeometry.height) studioDirty = true;
@@ -834,9 +856,9 @@ function drawWorkRoleBadge(role: string, x: number, y: number, scale: number, co
   const left = snap(Math.max(42, Math.min(x + 6 * scale - width / 2, canvas.width - 42 - width)));
   const top = snap(Math.min(canvas.height - 34, y + 14 * scale + 2));
   const badgeHeight = fontSize + 7;
-  ctx.fillStyle = "#13152d"; ctx.fillRect(left + 2, top + 2, width, 17);
-  ctx.fillStyle = "#2b2b4d"; ctx.fillRect(left, top, width, 17);
-  ctx.fillStyle = color; ctx.fillRect(left, top, 4, 17);
+  ctx.fillStyle = "#13152d"; ctx.fillRect(left + 2, top + 2, width, badgeHeight);
+  ctx.fillStyle = "#2b2b4d"; ctx.fillRect(left, top, width, badgeHeight);
+  ctx.fillStyle = color; ctx.fillRect(left, top, 4, badgeHeight);
   textOnCanvas(caption, left + 9, top + 3, COLORS.light, fontSize);
 }
 
