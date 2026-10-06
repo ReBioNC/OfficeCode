@@ -14,6 +14,7 @@ import { stationForRun, waitingFor, currentWorkActivity, STATION_LABEL } from ".
 import { waitingDestination, type WaitingSchedule } from "./studio-waiting";
 import { activityVisual, activityPose, drawActivityScreen, drawActivityProp } from "./activity-visuals";
 import { activityBubble } from "./activity-bubble";
+import { attentionFor, attentionRuns } from "./agent-attention";
 import { completionTransfers, transferPoint, type TransferSeed } from "./result-transfers";
 import { studioRooms, roomAt, roomResidents, hitComputer } from "./studio-interactions";
 import { STUDIO_DOORS, STUDIO_WIDTH, STUDIO_BASE_HEIGHT, STUDIO_ENTRY, STUDIO_OBSTACLES } from "./studio-map";
@@ -92,6 +93,11 @@ const crewUl = document.getElementById("crew") as HTMLUListElement;
 const connection = document.getElementById("connection") as HTMLSpanElement;
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 const panelLayout = attachPanelLayout();
+const attentionToggle = document.getElementById("attentionToggle") as HTMLButtonElement;
+attentionToggle.onclick = () => {
+  panelLayout.showActivity();
+  (document.getElementById("attentionSection") as HTMLElement).scrollIntoView({ block: "nearest" });
+};
 
 let office: OfficeDoc = { building: "HQ", rooms: [], desks: [], hallways: [], objects: [] };
 let mirrorOnly = false;
@@ -297,9 +303,34 @@ function renderConnection(): void {
     managed: healthInfo.leaseManaged === true, leases: healthInfo.activeLeases ?? 0, active: visibleAgents().length, attempted: healthAttempted });
   connection.dataset.state = status.state;
   connection.textContent = status.text;
+  renderAttention(status.state === "offline" && healthAttempted ? status.text : undefined);
   canvas.dataset.sync = status.state;
   const lastEvent = document.getElementById("lastEvent") as HTMLElement;
   lastEvent.textContent = healthInfo.lastEventAt ? `Last event ${new Date(healthInfo.lastEventAt).toLocaleTimeString("en-GB")}` : "No activity received yet";
+}
+
+function renderAttention(connectionIssue?: string): void {
+  const focusedKey = (document.activeElement as HTMLElement | null)?.dataset.focusKey;
+  const warnings = attentionRuns(runs);
+  const count = warnings.length + (connectionIssue ? 1 : 0);
+  attentionToggle.hidden = count === 0;
+  attentionToggle.textContent = `! Attention (${count})`;
+  const section = document.getElementById("attentionSection") as HTMLElement;
+  section.hidden = count === 0;
+  const list = document.getElementById("attentionList") as HTMLElement;
+  const nodes: HTMLElement[] = [];
+  if (connectionIssue) nodes.push(element("li", "attention-item", `${connectionIssue}. Displayed activity may be stale. Check OpenCode and the dashboard URL; this view reconnects automatically.`));
+  for (const run of warnings) {
+    const warning = attentionFor(run)!;
+    const item = element("li", "attention-item");
+    const choose = element("button", "inspect-button", `! ${warning.label} · ${displayWorkRole(run, false)}`);
+    choose.type = "button"; choose.dataset.focusKey = `attention:${run.id}`;
+    choose.onclick = () => selectAgent(run.id);
+    item.append(choose, element("p", "", warning.detail), element("span", "team-parent", "Handle permissions and errors in OpenCode."));
+    nodes.push(item);
+  }
+  list.replaceChildren(...nodes);
+  if (focusedKey) list.querySelectorAll<HTMLElement>("[data-focus-key]").forEach(node => { if (node.dataset.focusKey === focusedKey) node.focus({ preventScroll: true }); });
 }
 
 function renderPanels(): void {
@@ -360,6 +391,10 @@ function renderPanels(): void {
     (document.getElementById("focusTask") as HTMLElement).textContent = focus?.prompt || (selectedRoomId ? "No agents in this room" : "Waiting for a session");
     (document.getElementById("focusActivity") as HTMLElement).textContent = focus ? activityOf(focus).label : "No activity yet";
     (document.getElementById("focusDetail") as HTMLElement).textContent = focus?.detail || "Start working on a feature in OpenCode.";
+    const warning = focus ? attentionFor(focus) : undefined;
+    const focusAttention = document.getElementById("focusAttention") as HTMLElement;
+    focusAttention.hidden = !warning;
+    focusAttention.textContent = warning ? `${warning.label}: ${warning.detail} Handle this in OpenCode.` : "";
     const tools = document.getElementById("activeTools") as HTMLElement;
     tools.replaceChildren(...(focus?.activeTools ?? []).map((tool) => element("li", "tool-item", `${tool.name} · ${tool.detail}`)));
     tools.hidden = !focus?.activeTools?.length;
@@ -836,8 +871,9 @@ function drawOfficeAgents(sessions: Run[], tick: number, now: number): void {
     if (computer && arrived) {
       drawActivityScreen(ctx, visual, computer, phase);
     }
-    if (station === "approval") {
-      ctx.fillStyle = tick % 2 === 0 ? "#ffd594" : "#ff827d"; ctx.fillRect(x+36,y-8,7,7);
+    if (attentionFor(run)) {
+      ctx.fillStyle = "#f8be6a"; ctx.fillRect(x + 26, y + 1, 16, 16);
+      textOnCanvas("!", x + 31, y + 3, "#242747", 12);
     }
     ctx.fillStyle = activity.color;
     ctx.fillRect(x - 5, y + 14 * scale - 4, 12 * scale + 10, 4);

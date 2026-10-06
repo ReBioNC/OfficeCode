@@ -329,3 +329,5 @@ Open `http://127.0.0.1:8787` and press `Ctrl+C` to stop the manual server. A ser
 | `test/` | Node.js tests |
 
 Activity bubbles use the current local tool detail, respect permission/delegation waits, and truncate to 36 characters. With more than four agents, inspect an agent to see its full bubble; other agents keep compact markers.
+
+Attention badges show actual permission waits, stopped sessions and the latest failed tool outcome. Click an agent badge or the Attention button to inspect details. Permissions/errors are handled in OpenCode. Connection warnings mark displayed activity as potentially stale; resumed sessions replace old alerts.
