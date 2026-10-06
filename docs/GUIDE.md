@@ -327,3 +327,5 @@ Open `http://127.0.0.1:8787` and press `Ctrl+C` to stop the manual server. A ser
 | `.opencode/commands/` | Project-level `/dashboard` command |
 | `scripts/` | Build scripts, global installer, and URL helper |
 | `test/` | Node.js tests |
+
+Activity bubbles use the current local tool detail, respect permission/delegation waits, and truncate to 36 characters. With more than four agents, inspect an agent to see its full bubble; other agents keep compact markers.

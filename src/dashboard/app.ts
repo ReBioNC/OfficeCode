@@ -13,6 +13,7 @@ import { drawExpandedOffice } from "./studio-art";
 import { stationForRun, waitingFor, currentWorkActivity, STATION_LABEL } from "./studio-workflow";
 import { waitingDestination, type WaitingSchedule } from "./studio-waiting";
 import { activityVisual, activityPose, drawActivityScreen, drawActivityProp } from "./activity-visuals";
+import { activityBubble } from "./activity-bubble";
 import { completionTransfers, transferPoint, type TransferSeed } from "./result-transfers";
 import { studioRooms, roomAt, roomResidents, hitComputer } from "./studio-interactions";
 import { STUDIO_DOORS, STUDIO_WIDTH, STUDIO_BASE_HEIGHT, STUDIO_ENTRY, STUDIO_OBSTACLES } from "./studio-map";
@@ -713,7 +714,7 @@ function stationFor(run: Run): OfficeStation {
 }
 
 function drawAgentBubble(run: Run, x: number, y: number, color: string, lane: number): void {
-  const text = short(stationFor(run)==="waiting" ? activityOf(run).label : run.detail || activityOf(run).label, 31);
+  const text = activityBubble(run, stationFor(run) === "waiting" ? activityOf(run).label : undefined);
   ctx.font = 'bold 11px "Courier New", monospace';
   const width = Math.min(278, Math.ceil(ctx.measureText(text).width) + 18);
   const left = snap(Math.max(42, Math.min(x - 16, canvas.width - 42 - width)));
@@ -850,7 +851,7 @@ function drawOfficeAgents(sessions: Run[], tick: number, now: number): void {
       ctx.fillStyle = "#fff7dd";
       for (let dot = 0; dot < 3; dot++) ctx.fillRect(x + 36 + dot * 7, y - 10 - (tick + dot) % 2 * 3, 4, 4);
     }
-    if (sessions.length <= 4) drawAgentBubble(run, x, y, activity.color, 0);
+    if (sessions.length <= 4 || run.id === selectedRunId) drawAgentBubble(run, x, y, activity.color, 0);
     else {
       const mark = ({ thinking: "…", delegating: "↔", reading: "R", editing: "E", "web-search": "W", terminal: ">_", approval: "!", lounge: "·", arrival: "→", review: "QA", waiting: "…" })[station];
       ctx.fillStyle = "#242747"; ctx.fillRect(x + 30, y + 5, 21, 16);
