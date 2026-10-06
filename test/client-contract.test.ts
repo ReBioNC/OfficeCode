@@ -21,10 +21,11 @@ describe("dashboard visual-only contract", () => {
     assert.ok(!src.includes('method: "POST"'), "no POST from dashboard");
     assert.ok(!src.includes("<form"), "no forms in dashboard code");
   });
-  it("has no forms in markup", () => {
+  it("has no dispatch forms and permits only local visual inputs", () => {
     const html = fs.readFileSync("src/dashboard/index.html", "utf8");
     assert.ok(!html.includes("<form"), "sidebar has no forms");
-    assert.ok(!html.includes("<input"), "sidebar has no inputs");
+    assert.deepEqual([...html.matchAll(/<input\b[^>]*\bid="([^"]+)"/g)].map(match => match[1]), ["pref-bubbles"], "only the local bubble setting is an input");
+    assert.deepEqual([...html.matchAll(/<select\b[^>]*\bid="([^"]+)"/g)].map(match => match[1]), ["pref-theme", "pref-motion", "pref-labels"], "select controls only customize local visuals");
   });
   it("shows role pills and status bubbles in the studio", () => {
     const src = fs.readFileSync("src/dashboard/app.ts", "utf8");

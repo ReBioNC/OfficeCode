@@ -15,6 +15,7 @@ import { waitingDestination, type WaitingSchedule } from "./studio-waiting";
 import { activityVisual, activityPose, drawActivityScreen, drawActivityProp } from "./activity-visuals";
 import { activityBubble } from "./activity-bubble";
 import { attentionFor, attentionRuns } from "./agent-attention";
+import { loadPreferences, savePreferences, normalizePreferences, chosenPeriod, motionPolicy, type VisualPreferences } from "./visual-preferences";
 import { completionTransfers, transferPoint, type TransferSeed } from "./result-transfers";
 import { studioRooms, roomAt, roomResidents, hitComputer } from "./studio-interactions";
 import { STUDIO_DOORS, STUDIO_WIDTH, STUDIO_BASE_HEIGHT, STUDIO_ENTRY, STUDIO_OBSTACLES } from "./studio-map";
@@ -91,7 +92,12 @@ const runsUl = document.getElementById("runs") as HTMLUListElement;
 const queueUl = document.getElementById("queue") as HTMLUListElement;
 const crewUl = document.getElementById("crew") as HTMLUListElement;
 const connection = document.getElementById("connection") as HTMLSpanElement;
-const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+const systemMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+// Accessing localStorage itself can throw, before getItem is called.
+let preferences = normalizePreferences(null);
+try { preferences = loadPreferences(window.localStorage); } catch { /* Use defaults. */ }
+let motion = motionPolicy(preferences.motion, systemMotion.matches);
+let reducedMotion = !motion.travel;
 const panelLayout = attachPanelLayout();
 const attentionToggle = document.getElementById("attentionToggle") as HTMLButtonElement;
 attentionToggle.onclick = () => {
@@ -249,7 +255,7 @@ function renderRoomInspector(syncFocus = false): void {
 
 function updateStudioClock(): boolean {
   const date = new Date();
-  const period = getStudioPeriod(date);
+  const period = chosenPeriod(preferences, date);
   const changed = period !== studioPeriod;
   studioPeriod = period;
   theme = STUDIO_THEMES[period];
@@ -279,6 +285,40 @@ function label(state: string): string {
 function visibleAgents(): Run[] {
   return selectVisibleAgents(runs);
 }
+
+function labelScale(): number { return preferences.labels === "small" ? .85 : preferences.labels === "large" ? 1.2 : 1; }
+
+function applyPreferences(persist = true): void {
+  motion = motionPolicy(preferences.motion, systemMotion.matches);
+  reducedMotion = !motion.travel;
+  if (animationFrame !== undefined) window.cancelAnimationFrame(animationFrame);
+  animationFrame = undefined;
+  if (reducedMotion) { resultTransfers = []; waitingSchedules.clear(); }
+  for (const agent of agentPositions.values()) agent.time = performance.now();
+  document.documentElement.dataset.motion = preferences.motion;
+  document.documentElement.style.setProperty("--agent-label-scale", String(labelScale()));
+  for (const key of ["theme", "motion", "labels"] as const) (document.getElementById(`pref-${key}`) as HTMLSelectElement).value = preferences[key];
+  (document.getElementById("pref-bubbles") as HTMLInputElement).checked = preferences.bubbles;
+  (document.getElementById("motionHint") as HTMLElement).textContent = systemMotion.matches
+    ? "System reduced motion is active. Animations remain off." : "Reduced: stationary agents with gentle activity. Off: static poses.";
+  if (persist) { try { savePreferences(window.localStorage, preferences); } catch { /* Use the current view without persistence. */ } }
+  updateStudioClock(); studioDirty = true; draw();
+}
+
+const settingsToggle = document.getElementById("settingsToggle") as HTMLButtonElement;
+settingsToggle.onclick = () => {
+  const panel = document.getElementById("visualSettings") as HTMLElement;
+  panel.hidden = !panel.hidden; settingsToggle.setAttribute("aria-expanded", String(!panel.hidden));
+};
+for (const key of ["theme", "motion", "labels", "bubbles"] as const) {
+  document.getElementById(`pref-${key}`)!.addEventListener("change", event => {
+    const control = event.target as HTMLInputElement;
+    preferences = normalizePreferences({ ...preferences, [key]: key === "bubbles" ? control.checked : control.value });
+    applyPreferences();
+  });
+}
+document.getElementById("resetVisual")!.onclick = () => { preferences = normalizePreferences(null); applyPreferences(); };
+systemMotion.addEventListener("change", () => applyPreferences(false));
 
 function activityOf(run: Run): { label: string; persona: string; station: string; color: string } {
   const dependencies=waitingFor(run,visibleAgents());
@@ -705,7 +745,7 @@ function drawRoom(room: Room, index: number, runById: Map<string, Run>, tick: nu
     const roleColor = ROLE_PILL[run.role] ?? "#a0a4ad";
     ctx.fillStyle = roleColor;
     ctx.fillRect(characterX - 2, characterY + 28, 28, 4);
-    const bubble = BUBBLE_TEXT[run.state]?.(run);
+    const bubble = preferences.bubbles ? BUBBLE_TEXT[run.state]?.(run) : null;
     if (bubble) {
       ctx.font = 'bold 10px "Courier New", monospace';
       const width = Math.ceil(ctx.measureText(bubble).width) + 12;
@@ -749,17 +789,20 @@ function stationFor(run: Run): OfficeStation {
 }
 
 function drawAgentBubble(run: Run, x: number, y: number, color: string, lane: number): void {
+  if (!preferences.bubbles) return;
   const text = activityBubble(run, stationFor(run) === "waiting" ? activityOf(run).label : undefined);
-  ctx.font = 'bold 11px "Courier New", monospace';
-  const width = Math.min(278, Math.ceil(ctx.measureText(text).width) + 18);
+  const fontSize = Math.round(11 * labelScale());
+  ctx.font = `bold ${fontSize}px "Courier New", monospace`;
+  const width = Math.ceil(ctx.measureText(text).width) + 18;
+  const height = fontSize + 11;
   const left = snap(Math.max(42, Math.min(x - 16, canvas.width - 42 - width)));
   const top = snap(Math.max(108, y - 27 - lane * 25));
-  ctx.fillStyle = "#0c1025"; ctx.fillRect(left + 3, top + 4, width, 22);
-  ctx.fillStyle = color; ctx.fillRect(left, top, width, 22);
-  ctx.fillStyle = "#242747"; ctx.fillRect(left + 3, top + 3, width - 6, 16);
+  ctx.fillStyle = "#0c1025"; ctx.fillRect(left + 3, top + 4, width, height);
+  ctx.fillStyle = color; ctx.fillRect(left, top, width, height);
+  ctx.fillStyle = "#242747"; ctx.fillRect(left + 3, top + 3, width - 6, height - 6);
   const tail = Math.max(left + 8, Math.min(x + 4, left + width - 15));
-  ctx.fillStyle = color; ctx.fillRect(tail, top + 22, 7, 5);
-  textOnCanvas(text, left + 10, top + 5, "#fff1df", 11);
+  ctx.fillStyle = color; ctx.fillRect(tail, top + height, 7, 5);
+  textOnCanvas(text, left + 10, top + 5, "#fff1df", fontSize);
 }
 
 function drawStudioDoors(now: number): void {
@@ -785,11 +828,12 @@ function drawStudioDoors(now: number): void {
 
 function drawWorkRoleBadge(role: string, x: number, y: number, scale: number, color: string, compact = false): void {
   const caption = short(role.toUpperCase(), compact ? 6 : 14);
-  const fontSize = compact ? 8 : 10;
+  const fontSize = Math.round((compact ? 8 : 10) * labelScale());
   ctx.font = `bold ${fontSize}px "Courier New", monospace`;
   const width = Math.ceil(ctx.measureText(caption).width) + 16;
   const left = snap(Math.max(42, Math.min(x + 6 * scale - width / 2, canvas.width - 42 - width)));
   const top = snap(Math.min(canvas.height - 34, y + 14 * scale + 2));
+  const badgeHeight = fontSize + 7;
   ctx.fillStyle = "#13152d"; ctx.fillRect(left + 2, top + 2, width, 17);
   ctx.fillStyle = "#2b2b4d"; ctx.fillRect(left, top, width, 17);
   ctx.fillStyle = color; ctx.fillRect(left, top, 4, 17);
@@ -861,7 +905,7 @@ function drawOfficeAgents(sessions: Run[], tick: number, now: number): void {
     const seated = arrived && seat.seated;
     const activity = activityOf(run);
     const visual = activityVisual(run, station === "waiting");
-    const phase = reducedMotion ? 0 : Math.floor(now / 180) % 4;
+    const phase = !motion.animate ? 0 : Math.floor(now / (reducedMotion ? 800 : 180)) % 4;
     const workRole = displayWorkRole(run, sessions.length === 1);
     const palette = agentPalette(workRole, id);
     if (run.id === selectedRunId || selectedRoomId && roomAt(agent.point, canvas.height)?.id === selectedRoomId) {
@@ -1003,7 +1047,7 @@ function draw(now = performance.now()): void {
 }
 
 function scheduleAnimation(): void {
-  if (reducedMotion || animationFrame !== undefined || document.visibilityState !== "visible") return;
+  if (!motion.animate || animationFrame !== undefined || document.visibilityState !== "visible") return;
   if (mirrorOnly && (!streamReady || !latestFetchOkay || (healthInfo.leaseManaged && !healthInfo.activeLeases))) return;
   const active = mirrorOnly ? visibleAgents().length > 0 : runs.some((run) => run.state === "walking" || run.state === "delivering");
   if (!active) return;
@@ -1012,7 +1056,7 @@ function scheduleAnimation(): void {
     const moving = [...agentPositions.values()].some((agent) => agent.route.length > 0)
       || resultTransfers.length > 0
       || [...doorOpenness.values()].some((fraction) => fraction > 0 && fraction < 1);
-    if (now - lastPaint >= (moving ? 15 : 80)) {
+    if (now - lastPaint >= (moving && motion.travel ? 15 : motion.interval)) {
       lastPaint = now;
       draw(now);
     }
@@ -1028,7 +1072,7 @@ function connect(): void {
   source.onerror = () => { streamReady = false; renderConnection(); void snapshot(); };
 }
 
-updateStudioClock();
+applyPreferences(false);
 window.setInterval(() => {
   if (document.visibilityState === "visible" && updateStudioClock()) draw();
 }, 15_000);
