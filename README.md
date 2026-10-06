@@ -2,7 +2,7 @@
 
 A global [OpenCode](https://opencode.ai/) plugin that visualizes agents and tool activity in a spacious pixel-art office. Six connected rooms follow their work, with a lobby, library, and lounge for delegation waits. Themes follow your local clock. OpenCode runs every model; the dashboard makes no additional model calls.
 
-Click an agent or computer to inspect its work, concurrent tools, delegation links, and workflow timeline. Select a room to highlight its current occupants. Activity poses/screens show reading, editing, browsing and running tests; completed subagents send a brief result animation to their active parent. Drag the activity divider or use **Hide activity** for more studio space; your layout is saved in the browser. Use **Fit studio**, **Focus agent**, drag, or pinch to navigate. Avatar models remain stable per session.
+Click an agent or computer to inspect its work, concurrent tools, delegation links, and workflow timeline. Select a room to highlight its current occupants. Activity poses/screens show reading, editing, browsing and running tests; completed subagents send a brief result animation to their active parent. Drag the activity divider or use **Hide activity** for more studio space; your layout is saved in the browser. Use **Fit studio**, **Focus agent**, drag, or pinch to navigate. Avatar models remain stable per session. Use **Visual settings** for automatic/manual themes, animation level, agent label size, and bubbles. **Attention** opens permission/error/connection details; **Completed tasks** keeps observed workflow summaries after characters leave.
 
 ![OfficeCode expanded studio with six agents across activity rooms](docs/assets/studio-preview.png)
 

@@ -13,6 +13,10 @@ import { drawExpandedOffice } from "./studio-art";
 import { stationForRun, waitingFor, currentWorkActivity, STATION_LABEL } from "./studio-workflow";
 import { waitingDestination, type WaitingSchedule } from "./studio-waiting";
 import { activityVisual, activityPose, drawActivityScreen, drawActivityProp } from "./activity-visuals";
+import { activityBubble } from "./activity-bubble";
+import { attentionFor, attentionRuns } from "./agent-attention";
+import { loadPreferences, savePreferences, normalizePreferences, chosenPeriod, motionPolicy } from "./visual-preferences";
+import { taskSummary } from "./task-summary";
 import { completionTransfers, transferPoint, type TransferSeed } from "./result-transfers";
 import { studioRooms, roomAt, roomResidents, hitComputer } from "./studio-interactions";
 import { STUDIO_DOORS, STUDIO_WIDTH, STUDIO_BASE_HEIGHT, STUDIO_ENTRY, STUDIO_OBSTACLES } from "./studio-map";
@@ -89,8 +93,18 @@ const runsUl = document.getElementById("runs") as HTMLUListElement;
 const queueUl = document.getElementById("queue") as HTMLUListElement;
 const crewUl = document.getElementById("crew") as HTMLUListElement;
 const connection = document.getElementById("connection") as HTMLSpanElement;
-const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+const systemMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+// Accessing localStorage itself can throw, before getItem is called.
+let preferences = normalizePreferences(null);
+try { preferences = loadPreferences(window.localStorage); } catch { /* Use defaults. */ }
+let motion = motionPolicy(preferences.motion, systemMotion.matches);
+let reducedMotion = !motion.travel;
 const panelLayout = attachPanelLayout();
+const attentionToggle = document.getElementById("attentionToggle") as HTMLButtonElement;
+attentionToggle.onclick = () => {
+  panelLayout.showActivity();
+  (document.getElementById("attentionSection") as HTMLElement).scrollIntoView({ block: "nearest" });
+};
 
 let office: OfficeDoc = { building: "HQ", rooms: [], desks: [], hallways: [], objects: [] };
 let mirrorOnly = false;
@@ -242,7 +256,7 @@ function renderRoomInspector(syncFocus = false): void {
 
 function updateStudioClock(): boolean {
   const date = new Date();
-  const period = getStudioPeriod(date);
+  const period = chosenPeriod(preferences, date);
   const changed = period !== studioPeriod;
   studioPeriod = period;
   theme = STUDIO_THEMES[period];
@@ -273,6 +287,40 @@ function visibleAgents(): Run[] {
   return selectVisibleAgents(runs);
 }
 
+function labelScale(): number { return preferences.labels === "small" ? .85 : preferences.labels === "large" ? 1.2 : 1; }
+
+function applyPreferences(persist = true): void {
+  motion = motionPolicy(preferences.motion, systemMotion.matches);
+  reducedMotion = !motion.travel;
+  if (animationFrame !== undefined) window.cancelAnimationFrame(animationFrame);
+  animationFrame = undefined;
+  if (reducedMotion) { resultTransfers = []; waitingSchedules.clear(); }
+  for (const agent of agentPositions.values()) agent.time = performance.now();
+  document.documentElement.dataset.motion = preferences.motion;
+  document.documentElement.style.setProperty("--agent-label-scale", String(labelScale()));
+  for (const key of ["theme", "motion", "labels"] as const) (document.getElementById(`pref-${key}`) as HTMLSelectElement).value = preferences[key];
+  (document.getElementById("pref-bubbles") as HTMLInputElement).checked = preferences.bubbles;
+  (document.getElementById("motionHint") as HTMLElement).textContent = systemMotion.matches
+    ? "System reduced motion is active. Animations remain off." : "Reduced: stationary agents with gentle activity. Off: static poses.";
+  if (persist) { try { savePreferences(window.localStorage, preferences); } catch { /* Use the current view without persistence. */ } }
+  updateStudioClock(); studioDirty = true; draw();
+}
+
+const settingsToggle = document.getElementById("settingsToggle") as HTMLButtonElement;
+settingsToggle.onclick = () => {
+  const panel = document.getElementById("visualSettings") as HTMLElement;
+  panel.hidden = !panel.hidden; settingsToggle.setAttribute("aria-expanded", String(!panel.hidden));
+};
+for (const key of ["theme", "motion", "labels", "bubbles"] as const) {
+  document.getElementById(`pref-${key}`)!.addEventListener("change", event => {
+    const control = event.target as HTMLInputElement;
+    preferences = normalizePreferences({ ...preferences, [key]: key === "bubbles" ? control.checked : control.value });
+    applyPreferences();
+  });
+}
+document.getElementById("resetVisual")!.onclick = () => { preferences = normalizePreferences(null); applyPreferences(); };
+systemMotion.addEventListener("change", () => applyPreferences(false));
+
 function activityOf(run: Run): { label: string; persona: string; station: string; color: string } {
   const dependencies=waitingFor(run,visibleAgents());
   if (dependencies.length) {
@@ -296,15 +344,61 @@ function renderConnection(): void {
     managed: healthInfo.leaseManaged === true, leases: healthInfo.activeLeases ?? 0, active: visibleAgents().length, attempted: healthAttempted });
   connection.dataset.state = status.state;
   connection.textContent = status.text;
+  renderAttention(status.state === "offline" && healthAttempted ? status.text : undefined);
   canvas.dataset.sync = status.state;
   const lastEvent = document.getElementById("lastEvent") as HTMLElement;
   lastEvent.textContent = healthInfo.lastEventAt ? `Last event ${new Date(healthInfo.lastEventAt).toLocaleTimeString("en-GB")}` : "No activity received yet";
+}
+
+function renderAttention(connectionIssue?: string): void {
+  const focusedKey = (document.activeElement as HTMLElement | null)?.dataset.focusKey;
+  const warnings = attentionRuns(runs);
+  const count = warnings.length + (connectionIssue ? 1 : 0);
+  attentionToggle.hidden = count === 0;
+  attentionToggle.textContent = `! Attention (${count})`;
+  const section = document.getElementById("attentionSection") as HTMLElement;
+  section.hidden = count === 0;
+  const list = document.getElementById("attentionList") as HTMLElement;
+  const nodes: HTMLElement[] = [];
+  if (connectionIssue) nodes.push(element("li", "attention-item", `${connectionIssue}. Displayed activity may be stale. Check OpenCode and the dashboard URL; this view reconnects automatically.`));
+  for (const run of warnings) {
+    const warning = attentionFor(run)!;
+    const item = element("li", "attention-item");
+    const choose = element("button", "inspect-button", `! ${warning.label} · ${displayWorkRole(run, false)}`);
+    choose.type = "button"; choose.dataset.focusKey = `attention:${run.id}`;
+    choose.onclick = () => selectAgent(run.id);
+    item.append(choose, element("p", "", warning.detail), element("span", "team-parent", "Handle permissions and errors in OpenCode."));
+    nodes.push(item);
+  }
+  list.replaceChildren(...nodes);
+  if (focusedKey) list.querySelectorAll<HTMLElement>("[data-focus-key]").forEach(node => { if (node.dataset.focusKey === focusedKey) node.focus({ preventScroll: true }); });
+}
+
+function renderTaskSummaries(): void {
+  const completed = runs.filter(run => run.state === "done" || run.state === "blocked").slice(-8).reverse();
+  (document.getElementById("completedSection") as HTMLElement).hidden = completed.length === 0;
+  const list = document.getElementById("completedTasks") as HTMLElement;
+  list.replaceChildren(...completed.map(run => {
+    const summary = taskSummary(run, runs);
+    const item = element("li", "task-summary");
+    item.dataset.runId = run.id;
+    item.append(element("strong", "", short(run.prompt, 120) || run.id),
+      element("p", "summary-meta", `${run.state === "done" ? "Completed" : "Stopped"} · ${summary.duration} · ${summary.subagents} observed subagents`),
+      element("p", "summary-meta", `${summary.tools} observed tool results · ${summary.tools - summary.errors} completed · ${summary.errors} failed`));
+    const activities = Object.entries(summary.activities).map(([activity, count]) => `${ACTIVITY[activity]?.label ?? activity}: ${count}`);
+    if (activities.length) item.append(element("p", "summary-meta", activities.join(" · ")));
+    item.append(element("p", "team-parent", summary.partial ? "Partial summary: earlier workflow steps were truncated." : "Based on recorded events. Tool results can be incomplete; subagents count unique descendant sessions in this turn."));
+    const inspect = element("button", "inspect-button", "View workflow");
+    inspect.type = "button"; inspect.dataset.focusKey = `summary:${run.id}`; inspect.onclick = () => selectAgent(run.id);
+    item.append(inspect); return item;
+  }));
 }
 
 function renderPanels(): void {
   const focusedKey = (document.activeElement as HTMLElement | null)?.dataset.focusKey;
   const runById = new Map(runs.map((run) => [run.id, run]));
   const sessions = mirrorOnly ? visibleAgents() : [];
+  renderTaskSummaries();
   studioSeats = allocateStudioSeats(sessions.map((run) => ({ id: run.sessionId ?? run.id, station: stationFor(run) })), studioSeats);
   const nextGeometry = studioGeometry(studioSeats, occupiedStudioHeight());
   if (geometry.height !== nextGeometry.height) studioDirty = true;
@@ -359,6 +453,10 @@ function renderPanels(): void {
     (document.getElementById("focusTask") as HTMLElement).textContent = focus?.prompt || (selectedRoomId ? "No agents in this room" : "Waiting for a session");
     (document.getElementById("focusActivity") as HTMLElement).textContent = focus ? activityOf(focus).label : "No activity yet";
     (document.getElementById("focusDetail") as HTMLElement).textContent = focus?.detail || "Start working on a feature in OpenCode.";
+    const warning = focus ? attentionFor(focus) : undefined;
+    const focusAttention = document.getElementById("focusAttention") as HTMLElement;
+    focusAttention.hidden = !warning;
+    focusAttention.textContent = warning ? `${warning.label}: ${warning.detail} Handle this in OpenCode.` : "";
     const tools = document.getElementById("activeTools") as HTMLElement;
     tools.replaceChildren(...(focus?.activeTools ?? []).map((tool) => element("li", "tool-item", `${tool.name} · ${tool.detail}`)));
     tools.hidden = !focus?.activeTools?.length;
@@ -669,7 +767,7 @@ function drawRoom(room: Room, index: number, runById: Map<string, Run>, tick: nu
     const roleColor = ROLE_PILL[run.role] ?? "#a0a4ad";
     ctx.fillStyle = roleColor;
     ctx.fillRect(characterX - 2, characterY + 28, 28, 4);
-    const bubble = BUBBLE_TEXT[run.state]?.(run);
+    const bubble = preferences.bubbles ? BUBBLE_TEXT[run.state]?.(run) : null;
     if (bubble) {
       ctx.font = 'bold 10px "Courier New", monospace';
       const width = Math.ceil(ctx.measureText(bubble).width) + 12;
@@ -713,17 +811,20 @@ function stationFor(run: Run): OfficeStation {
 }
 
 function drawAgentBubble(run: Run, x: number, y: number, color: string, lane: number): void {
-  const text = short(stationFor(run)==="waiting" ? activityOf(run).label : run.detail || activityOf(run).label, 31);
-  ctx.font = 'bold 11px "Courier New", monospace';
-  const width = Math.min(278, Math.ceil(ctx.measureText(text).width) + 18);
+  if (!preferences.bubbles) return;
+  const text = activityBubble(run, stationFor(run) === "waiting" ? activityOf(run).label : undefined);
+  const fontSize = Math.round(11 * labelScale());
+  ctx.font = `bold ${fontSize}px "Courier New", monospace`;
+  const width = Math.ceil(ctx.measureText(text).width) + 18;
+  const height = fontSize + 11;
   const left = snap(Math.max(42, Math.min(x - 16, canvas.width - 42 - width)));
   const top = snap(Math.max(108, y - 27 - lane * 25));
-  ctx.fillStyle = "#0c1025"; ctx.fillRect(left + 3, top + 4, width, 22);
-  ctx.fillStyle = color; ctx.fillRect(left, top, width, 22);
-  ctx.fillStyle = "#242747"; ctx.fillRect(left + 3, top + 3, width - 6, 16);
+  ctx.fillStyle = "#0c1025"; ctx.fillRect(left + 3, top + 4, width, height);
+  ctx.fillStyle = color; ctx.fillRect(left, top, width, height);
+  ctx.fillStyle = "#242747"; ctx.fillRect(left + 3, top + 3, width - 6, height - 6);
   const tail = Math.max(left + 8, Math.min(x + 4, left + width - 15));
-  ctx.fillStyle = color; ctx.fillRect(tail, top + 22, 7, 5);
-  textOnCanvas(text, left + 10, top + 5, "#fff1df", 11);
+  ctx.fillStyle = color; ctx.fillRect(tail, top + height, 7, 5);
+  textOnCanvas(text, left + 10, top + 5, "#fff1df", fontSize);
 }
 
 function drawStudioDoors(now: number): void {
@@ -749,14 +850,15 @@ function drawStudioDoors(now: number): void {
 
 function drawWorkRoleBadge(role: string, x: number, y: number, scale: number, color: string, compact = false): void {
   const caption = short(role.toUpperCase(), compact ? 6 : 14);
-  const fontSize = compact ? 8 : 10;
+  const fontSize = Math.round((compact ? 8 : 10) * labelScale());
   ctx.font = `bold ${fontSize}px "Courier New", monospace`;
   const width = Math.ceil(ctx.measureText(caption).width) + 16;
   const left = snap(Math.max(42, Math.min(x + 6 * scale - width / 2, canvas.width - 42 - width)));
   const top = snap(Math.min(canvas.height - 34, y + 14 * scale + 2));
-  ctx.fillStyle = "#13152d"; ctx.fillRect(left + 2, top + 2, width, 17);
-  ctx.fillStyle = "#2b2b4d"; ctx.fillRect(left, top, width, 17);
-  ctx.fillStyle = color; ctx.fillRect(left, top, 4, 17);
+  const badgeHeight = fontSize + 7;
+  ctx.fillStyle = "#13152d"; ctx.fillRect(left + 2, top + 2, width, badgeHeight);
+  ctx.fillStyle = "#2b2b4d"; ctx.fillRect(left, top, width, badgeHeight);
+  ctx.fillStyle = color; ctx.fillRect(left, top, 4, badgeHeight);
   textOnCanvas(caption, left + 9, top + 3, COLORS.light, fontSize);
 }
 
@@ -825,7 +927,7 @@ function drawOfficeAgents(sessions: Run[], tick: number, now: number): void {
     const seated = arrived && seat.seated;
     const activity = activityOf(run);
     const visual = activityVisual(run, station === "waiting");
-    const phase = reducedMotion ? 0 : Math.floor(now / 180) % 4;
+    const phase = !motion.animate ? 0 : Math.floor(now / (reducedMotion ? 800 : 180)) % 4;
     const workRole = displayWorkRole(run, sessions.length === 1);
     const palette = agentPalette(workRole, id);
     if (run.id === selectedRunId || selectedRoomId && roomAt(agent.point, canvas.height)?.id === selectedRoomId) {
@@ -835,8 +937,9 @@ function drawOfficeAgents(sessions: Run[], tick: number, now: number): void {
     if (computer && arrived) {
       drawActivityScreen(ctx, visual, computer, phase);
     }
-    if (station === "approval") {
-      ctx.fillStyle = tick % 2 === 0 ? "#ffd594" : "#ff827d"; ctx.fillRect(x+36,y-8,7,7);
+    if (attentionFor(run)) {
+      ctx.fillStyle = "#f8be6a"; ctx.fillRect(x + 26, y + 1, 16, 16);
+      textOnCanvas("!", x + 31, y + 3, "#242747", 12);
     }
     ctx.fillStyle = activity.color;
     ctx.fillRect(x - 5, y + 14 * scale - 4, 12 * scale + 10, 4);
@@ -850,7 +953,7 @@ function drawOfficeAgents(sessions: Run[], tick: number, now: number): void {
       ctx.fillStyle = "#fff7dd";
       for (let dot = 0; dot < 3; dot++) ctx.fillRect(x + 36 + dot * 7, y - 10 - (tick + dot) % 2 * 3, 4, 4);
     }
-    if (sessions.length <= 4) drawAgentBubble(run, x, y, activity.color, 0);
+    if (sessions.length <= 4 || run.id === selectedRunId) drawAgentBubble(run, x, y, activity.color, 0);
     else {
       const mark = ({ thinking: "…", delegating: "↔", reading: "R", editing: "E", "web-search": "W", terminal: ">_", approval: "!", lounge: "·", arrival: "→", review: "QA", waiting: "…" })[station];
       ctx.fillStyle = "#242747"; ctx.fillRect(x + 30, y + 5, 21, 16);
@@ -966,7 +1069,7 @@ function draw(now = performance.now()): void {
 }
 
 function scheduleAnimation(): void {
-  if (reducedMotion || animationFrame !== undefined || document.visibilityState !== "visible") return;
+  if (!motion.animate || animationFrame !== undefined || document.visibilityState !== "visible") return;
   if (mirrorOnly && (!streamReady || !latestFetchOkay || (healthInfo.leaseManaged && !healthInfo.activeLeases))) return;
   const active = mirrorOnly ? visibleAgents().length > 0 : runs.some((run) => run.state === "walking" || run.state === "delivering");
   if (!active) return;
@@ -975,7 +1078,7 @@ function scheduleAnimation(): void {
     const moving = [...agentPositions.values()].some((agent) => agent.route.length > 0)
       || resultTransfers.length > 0
       || [...doorOpenness.values()].some((fraction) => fraction > 0 && fraction < 1);
-    if (now - lastPaint >= (moving ? 15 : 80)) {
+    if (now - lastPaint >= (moving && motion.travel ? 15 : motion.interval)) {
       lastPaint = now;
       draw(now);
     }
@@ -991,7 +1094,7 @@ function connect(): void {
   source.onerror = () => { streamReady = false; renderConnection(); void snapshot(); };
 }
 
-updateStudioClock();
+applyPreferences(false);
 window.setInterval(() => {
   if (document.visibilityState === "visible" && updateStudioClock()) draw();
 }, 15_000);
