@@ -2,17 +2,19 @@ import { STUDIO_ROOMS, STUDIO_WALLS, STUDIO_WIDTH, STUDIO_BASE_HEIGHT, WORK_DESK
 import { studioMaterial, type StudioPeriod, type StudioTheme } from "./studio-theme";
 import { CHAIR_MAP, CHAIR_PALETTE, COMPUTER_MAP, COMPUTER_PALETTE, DESK_MAP, DESK_PALETTE, drawSprite } from "./sprites";
 
-export function drawStudioDesk(ctx: CanvasRenderingContext2D, x: number, y: number): void {
+export function drawStudioDesk(ctx: CanvasRenderingContext2D, x: number, y: number, aspect = 1): void {
+  ctx.save(); ctx.translate(x + 27, 0); ctx.scale(1 / aspect, 1); ctx.translate(-x - 27, 0);
   ctx.fillStyle = "#202341"; ctx.fillRect(x+6,y+7,54,38);
   drawSprite(ctx,CHAIR_MAP,CHAIR_PALETTE,x+15,y+39,3);
   drawSprite(ctx,DESK_MAP,DESK_PALETTE,x,y,3);
   drawSprite(ctx,COMPUTER_MAP,COMPUTER_PALETTE,x+6,y-18,3);
   ctx.fillStyle = "#e8a08e";ctx.fillRect(x+6,y+6,8,2);ctx.fillRect(x+42,y+8,5,2);
   ctx.fillStyle = "#a45b70";ctx.fillRect(x+8,y+27,12,2);ctx.fillRect(x+37,y+30,8,2);
+  ctx.restore();
 }
 
 /** Cached artwork. Every solid floor object is represented in studio-map. */
-export function drawExpandedOffice(ctx: CanvasRenderingContext2D, theme: StudioTheme, period: StudioPeriod, height: number, extraDesks: ReadonlyArray<readonly [number,number]>): void {
+export function drawExpandedOffice(ctx: CanvasRenderingContext2D, theme: StudioTheme, period: StudioPeriod, height: number, extraDesks: ReadonlyArray<readonly [number,number]>, aspect = 1): void {
   const material=(color:string)=>studioMaterial(color,period);
   const p={outer:theme.ui.night,frame:theme.ui.frame,wall:material("#615073"),edge:material("#11162c"),
     tile:material("#30345d"),tileAlt:material("#393d69"),seam:material("#292e55"),glint:material("#4d5078"),
@@ -20,7 +22,7 @@ export function drawExpandedOffice(ctx: CanvasRenderingContext2D, theme: StudioT
     woodDark:material("#726084"),teal:material("#59bdb7"),gold:theme.ui.accent,sofa:material("#6869a4"),
     sofaDark:material("#45406b"),leaves:material("#59bdb7"),pot:material("#dd917c"),glass:material("#9c86ce")};
   const rect=(x:number,y:number,w:number,h:number,color:string)=>{ctx.fillStyle=color;ctx.fillRect(Math.round(x),Math.round(y),w,h);};
-  const text=(s:string,x:number,y:number,color=p.label,size=17)=>{ctx.fillStyle=color;ctx.font=`bold ${size}px "Courier New",monospace`;ctx.textBaseline="top";ctx.fillText(s,x,y);};
+  const text=(s:string,x:number,y:number,color=p.label,size=17)=>{ctx.save();ctx.translate(x,0);ctx.scale(1/aspect,1);ctx.translate(-x,0);ctx.fillStyle=color;ctx.font=`bold ${size}px "Courier New",monospace`;ctx.textBaseline="top";ctx.fillText(s,x,y);ctx.restore();};
   function plate(s:string,x:number,y:number,color=p.paper) {const w=s.length*10+22;rect(x+3,y+3,w,27,p.edge);rect(x,y,w,27,color);text(s,x+10,y+5,p.ink,16);}
   function floor(x:number,y:number,w:number,h:number,color:string) {
     rect(x,y,w,h,color);
@@ -67,15 +69,15 @@ export function drawExpandedOffice(ctx: CanvasRenderingContext2D, theme: StudioT
   // Furnishings form compact islands and leave circulation space around them.
   rect(88,216,234,58,p.edge);rect(83,210,234,58,p.woodDark);
   for(let row=0;row<3;row++){rect(87,214+row*18,226,13,p.edge);for(let i=0,xx=91;xx<305;i++,xx+=10){rect(xx,217+row*18,6,10+i%2*2,[p.woodLight,p.teal,p.glass][i%3]);rect(xx+1,219+row*18,2,2,p.paper);}rect(87,227+row*18,226,3,p.woodLight);}
-  art(83,289,60);drawStudioDesk(ctx,...WEB_DESK);plant(295,355);
+  art(83,289,60);drawStudioDesk(ctx,WEB_DESK[0],WEB_DESK[1],aspect);plant(295,355);
   rect(595,164,155,34,p.edge);rect(599,168,147,26,p.paper);
   for(const [x,y,color] of [[609,175,p.woodLight],[633,175,p.teal],[657,175,p.glass],[690,175,p.glass],[714,175,p.woodLight]] as const)rect(x,y,15,9,color);
   art(438,278,52);
   for(const x of [513,568,623,678]){chair(x,224);chair(x,337);}
   rect(500,273,236,61,p.edge);rect(504,267,228,61,p.wood);rect(509,272,218,4,p.woodLight);rect(582,286,35,23,p.paper);rect(586,290,22,2,p.glass);rect(638,285,24,17,p.woodDark);rect(642,287,16,11,p.teal);
   plant(462,360);plant(746,363);art(1120,164,78);plant(892,355);plant(1343,355);
-  REVIEW_DESKS.forEach(([x,y],i)=>{drawStudioDesk(ctx,x,y);text(`FOCUS-${i+1}`,x-4,y-40,p.label,13);});
-  WORK_DESKS.forEach(([x,y],i)=>{drawStudioDesk(ctx,x,y);text(`DEV-${i+1}`,x+68,y-10,p.label,13);});
+  REVIEW_DESKS.forEach(([x,y],i)=>{drawStudioDesk(ctx,x,y,aspect);text(`FOCUS-${i+1}`,x-4,y-40,p.label,13);});
+  WORK_DESKS.forEach(([x,y],i)=>{drawStudioDesk(ctx,x,y,aspect);text(`DEV-${i+1}`,x+68,y-10,p.label,13);});
   art(693,543,62);plant(85,746);plant(736,752);
   rect(692,627,65,61,p.edge);rect(697,631,55,47,p.glass);rect(704,628,42,12,p.paper);rect(704,648,37,10,p.woodDark);rect(706,650,6,3,p.teal);rect(704,670,42,3,p.paper);
   rug(95,905,367,130);sofa(118,915,143);sofa(292,915,143);table(215,975,116);plant(111,1026);plant(398,1028);
@@ -91,7 +93,7 @@ export function drawExpandedOffice(ctx: CanvasRenderingContext2D, theme: StudioT
   // Draw the exact shared walls after furniture, with empty doorway openings.
   for(const wall of STUDIO_WALLS){rect(wall.x,wall.y-3,wall.w,wall.h+3,p.edge);rect(wall.x+1,wall.y-2,Math.max(2,wall.w-2),wall.h,p.wall);rect(wall.x+1,wall.y-2,Math.max(2,wall.w-2),2,p.glint);}
   for(const room of STUDIO_ROOMS)plate(room.name,room.x+22,room.y+21,material(room.accent));
-  if(extraDesks.length){floor(50,STUDIO_BASE_HEIGHT+5,1342,height-STUDIO_BASE_HEIGHT-68,material("#343660"));plate("TEAM WORKSPACE",76,STUDIO_BASE_HEIGHT+9,material("#cbb5f1"));for(const [x,y] of extraDesks)drawStudioDesk(ctx,x,y);}
+  if(extraDesks.length){floor(50,STUDIO_BASE_HEIGHT+5,1342,height-STUDIO_BASE_HEIGHT-68,material("#343660"));plate("TEAM WORKSPACE",76,STUDIO_BASE_HEIGHT+9,material("#cbb5f1"));for(const [x,y] of extraDesks)drawStudioDesk(ctx,x,y,aspect);}
   ctx.save();ctx.beginPath();ctx.rect(50,132,1342,height-194);ctx.clip();
   for(const wx of [397,640,883,1126])for(let band=0;band<5;band++){ctx.globalAlpha=theme.lightStrength*(1-band*.16);rect(wx+16+(period==="evening"?-band*16:band*9),132+band*22,100,22,theme.daylight);}
   for(const x of [540,695])for(let ring=3;ring>=0;ring--){ctx.globalAlpha=theme.lampStrength*.22;rect(x-20-ring*8,249-ring*4,40+ring*16,69+ring*8,"#ffd48c");}
