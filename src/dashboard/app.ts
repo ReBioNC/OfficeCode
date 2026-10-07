@@ -152,6 +152,13 @@ relationsToggle.onclick = () => {
 const camera = attachStudioCamera(canvas, () => {
   const focus = currentFocus();
   return focus ? agentPositions.get(focus.sessionId ?? focus.id)?.point : undefined;
+}, () => mirrorOnly);
+let projectionPaintPending = false;
+canvas.addEventListener("studio-projection-change", () => {
+  studioDirty = true;
+  if (projectionPaintPending) return;
+  projectionPaintPending = true;
+  window.requestAnimationFrame(() => { projectionPaintPending = false; draw(); });
 });
 
 function selectAgent(runId: string): void {
@@ -635,9 +642,15 @@ async function snapshot(): Promise<void> {
 }
 
 function textOnCanvas(value: string, x: number, y: number, color = COLORS.night, size = 12): void {
+  ctx.save();
+  // Text inside an already compensated character group keeps its normal width.
+  const transform = ctx.getTransform();
+  const stretch = camera.horizontalAspect() * transform.a / transform.d;
+  ctx.translate(x, 0); ctx.scale(1 / stretch, 1); ctx.translate(-x, 0);
   ctx.font = `bold ${size}px "Courier New", monospace`;
   ctx.fillStyle = color;
   ctx.fillText(value, snap(x), snap(y));
+  ctx.restore();
 }
 
 function plate(value: string, x: number, y: number, fill = COLORS.light, color = COLORS.night): void {
@@ -930,6 +943,8 @@ function drawOfficeAgents(sessions: Run[], tick: number, now: number): void {
     const phase = !motion.animate ? 0 : Math.floor(now / (reducedMotion ? 800 : 180)) % 4;
     const workRole = displayWorkRole(run, sessions.length === 1);
     const palette = agentPalette(workRole, id);
+    ctx.save();
+    ctx.translate(agent.point.x, 0); ctx.scale(1 / camera.horizontalAspect(), 1); ctx.translate(-agent.point.x, 0);
     if (run.id === selectedRunId || selectedRoomId && roomAt(agent.point, canvas.height)?.id === selectedRoomId) {
       ctx.strokeStyle = theme.ui.sage; ctx.lineWidth = 2;
       ctx.strokeRect(x - 5, y - 3, 46, 48);
@@ -960,6 +975,7 @@ function drawOfficeAgents(sessions: Run[], tick: number, now: number): void {
       textOnCanvas(mark, x + 33, y + 7, activity.color, 10);
     }
     drawWorkRoleBadge(workRole, x, y, scale, palette.C, sessions.length > 4);
+    ctx.restore();
   }
 }
 
@@ -981,6 +997,7 @@ function drawResultTransfers(now: number, sessions: readonly Run[]): void {
     const point = transferPoint(transfer.from, to, transfer.elapsed / 1800);
     const x = snap(point.x - 10), y = snap(point.y - 34);
     ctx.save();
+    ctx.translate(point.x, 0); ctx.scale(1 / camera.horizontalAspect(), 1); ctx.translate(-point.x, 0);
     ctx.globalAlpha = Math.max(0, Math.min(1, (1800 - transfer.elapsed) / 250));
     ctx.fillStyle = "#15172f"; ctx.fillRect(x + 3, y + 4, 22, 26);
     ctx.fillStyle = "#f8be6a"; ctx.fillRect(x, y, 20, 24);
@@ -1002,7 +1019,7 @@ function drawSessionFloor(tick: number, now: number): void {
     studioDirty = true;
   }
   if (studioDirty || !backgroundCtx || studioBackground.width !== canvas.width || studioBackground.height !== canvas.height) {
-    drawExpandedOffice(ctx, theme, studioPeriod, canvas.height, geometry.extraDesks);
+    drawExpandedOffice(ctx, theme, studioPeriod, canvas.height, geometry.extraDesks, camera.horizontalAspect());
     studioBackground.width = canvas.width; studioBackground.height = canvas.height;
     backgroundCtx?.drawImage(canvas, 0, 0);
     studioDirty = false;
