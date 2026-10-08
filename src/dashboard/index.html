@@ -179,14 +179,18 @@
     .task-summary { padding:12px; border:1px solid var(--line); background:var(--light); overflow-wrap:anywhere; font-size:12px; }
     .task-summary strong { display:block; margin-bottom:8px; }
     .summary-meta { font:11px/1.5 "Courier New",monospace; color:var(--muted); margin:5px 0; }
+  .crew-card[data-feature="outside"],.team-item[data-feature="outside"] { opacity:.35; }
+    .feature-focus-label { display:block; padding:6px 16px; font:11px "Courier New",monospace; color:var(--sage); }
+    .feature-focus-label[hidden] { display:none; }
   </style>
 </head>
 <body>
   <div class="app">
     <main class="floor-panel" aria-label="Live office floor">
       <header class="floor-header"><div><p id="studioPeriod" class="eyebrow">Studio / live feed</p><h1>Office<span>Code</span> Studio</h1></div><div class="floor-status"><span id="floorMeta" class="floor-meta">Loading studio…</span><time id="studioClock" aria-label="Local time"></time></div></header>
-      <div class="studio-toolbar" role="group" aria-label="Studio view controls"><button id="zoomOut" type="button" aria-label="Zoom out">−</button><span id="zoomValue" aria-live="polite">100%</span><button id="zoomIn" type="button" aria-label="Zoom in">+</button><button id="zoomFit" type="button">Fit studio</button><button id="zoomFocus" type="button">Focus agent</button><button id="toggleFollow" type="button" aria-pressed="false" hidden>Follow agent</button><button id="toggleRelations" type="button" aria-pressed="false" hidden>Show relations</button><button id="toggleActivity" type="button" aria-controls="activityCenter" aria-expanded="true">Hide activity</button><button id="attentionToggle" type="button" aria-controls="attentionSection" hidden>! Attention</button><button id="settingsToggle" type="button" aria-expanded="false" aria-controls="visualSettings">Visual settings</button><button id="resetLayout" type="button">Reset layout</button><span>Drag to pan · pinch to zoom</span></div>
+      <div class="studio-toolbar" role="group" aria-label="Studio view controls"><button id="zoomOut" type="button" aria-label="Zoom out">−</button><span id="zoomValue" aria-live="polite">100%</span><button id="zoomIn" type="button" aria-label="Zoom in">+</button><button id="zoomFit" type="button">Fit studio</button><button id="zoomFocus" type="button">Focus agent</button><button id="toggleFollow" type="button" aria-pressed="false" hidden>Follow agent</button><button id="toggleFeatureFocus" type="button" aria-pressed="false" hidden>Focus feature</button><button id="toggleRelations" type="button" aria-pressed="false" hidden>Show relations</button><button id="toggleActivity" type="button" aria-controls="activityCenter" aria-expanded="true">Hide activity</button><button id="attentionToggle" type="button" aria-controls="attentionSection" hidden>! Attention</button><button id="settingsToggle" type="button" aria-expanded="false" aria-controls="visualSettings">Visual settings</button><button id="resetLayout" type="button">Reset layout</button><span>Drag to pan · pinch to zoom</span></div>
       <div id="roomControls" class="room-controls" role="group" aria-label="Inspect office rooms" hidden></div>
+      <span id="featureFocusLabel" class="feature-focus-label" role="status" hidden></span>
       <div id="visualSettings" class="visual-settings" role="group" aria-label="Visual settings" hidden>
         <label>Theme<select id="pref-theme"><option value="auto">Auto (local clock)</option><option value="morning">Morning</option><option value="day">Day</option><option value="evening">Evening</option><option value="night">Night</option></select></label>
         <label>Animation<select id="pref-motion"><option value="full">Full</option><option value="reduced">Reduced</option><option value="off">Off</option></select></label>

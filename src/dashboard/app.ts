@@ -17,6 +17,7 @@ import { activityBubble } from "./activity-bubble";
 import { attentionFor, attentionRuns } from "./agent-attention";
 import { loadPreferences, savePreferences, normalizePreferences, chosenPeriod, motionPolicy } from "./visual-preferences";
 import { taskSummary } from "./task-summary";
+import { featureRoot, featureMembers } from "./feature-focus";
 import { completionTransfers, transferPoint, type TransferSeed } from "./result-transfers";
 import { studioRooms, roomAt, roomResidents, hitComputer } from "./studio-interactions";
 import { STUDIO_DOORS, STUDIO_WIDTH, STUDIO_BASE_HEIGHT, STUDIO_ENTRY, STUDIO_OBSTACLES } from "./studio-map";
@@ -143,6 +144,13 @@ let roomNotice = "";
 let lastRoomSignature = "";
 let showRelations = false;
 let followedRunId: string | undefined;
+let featureRootId: string | undefined;
+let focusedFeatureIds: Set<string> | undefined;
+const featureToggle = document.getElementById("toggleFeatureFocus") as HTMLButtonElement;
+featureToggle.onclick = () => {
+  featureRootId = featureRootId ? undefined : featureRoot(runs, currentFocus()?.id ?? "");
+  renderPanels(); draw();
+};
 const relationsToggle = document.getElementById("toggleRelations") as HTMLButtonElement;
 relationsToggle.onclick = () => {
   showRelations = !showRelations;
@@ -429,6 +437,15 @@ function renderPanels(): void {
   const focusedKey = (document.activeElement as HTMLElement | null)?.dataset.focusKey;
   const runById = new Map(runs.map((run) => [run.id, run]));
   const sessions = mirrorOnly ? visibleAgents() : [];
+  focusedFeatureIds = featureRootId ? featureMembers(runs, featureRootId) : undefined;
+  if (focusedFeatureIds && !sessions.some(run => focusedFeatureIds!.has(run.id))) { featureRootId = undefined; focusedFeatureIds = undefined; }
+  featureToggle.hidden = !mirrorOnly;
+  featureToggle.disabled = !featureRootId && !sessions.some(run => run.id === currentFocus()?.id);
+  featureToggle.setAttribute("aria-pressed", String(!!featureRootId));
+  featureToggle.textContent = featureRootId ? "Clear feature focus" : "Focus feature";
+  const featureLabel = document.getElementById("featureFocusLabel") as HTMLElement;
+  featureLabel.hidden = !featureRootId;
+  featureLabel.textContent = featureRootId ? `Feature: ${short(runs.find(run => run.id === featureRootId)?.prompt ?? "Selected team", 36)} · ${sessions.filter(run => focusedFeatureIds?.has(run.id)).length} active` : "";
   renderTaskSummaries();
   studioSeats = allocateStudioSeats(sessions.map((run) => ({ id: run.sessionId ?? run.id, station: stationFor(run) })), studioSeats);
   const nextGeometry = studioGeometry(studioSeats, occupiedStudioHeight());
@@ -462,6 +479,7 @@ function renderPanels(): void {
   teamList.replaceChildren(...delegationRows(sessions).map(({run,depth}) => {
     const parent = latestSessions.get(run.parentSessionId);
     const item = element("li", "team-item");
+    item.dataset.feature = focusedFeatureIds && !focusedFeatureIds.has(run.id) ? "outside" : "inside";
     item.style.marginLeft = `${Math.min(depth, 6) * 12}px`;
     const choose = element("button", "team-select", `${run.parentSessionId ? "↳ " : "● "}${roleFor(run)} · ${short(run.prompt, 40)}`);
     choose.type = "button";
@@ -557,6 +575,7 @@ function renderPanels(): void {
       const card = element("li", "crew-card");
       card.dataset.state = run.state;
       card.dataset.selected = String(focus?.id === run.id);
+      card.dataset.feature = focusedFeatureIds && !focusedFeatureIds.has(run.id) ? "outside" : "inside";
       card.style.setProperty("--room-color", activityOf(run).color);
       const avatar = element("span", "crew-avatar");
       const portrait = document.createElement("canvas");
@@ -970,7 +989,8 @@ function drawOfficeAgents(sessions: Run[], tick: number, now: number): void {
     const palette = agentPalette(workRole, id);
     ctx.save();
     ctx.translate(agent.point.x, 0); ctx.scale(1 / camera.horizontalAspect(), 1); ctx.translate(-agent.point.x, 0);
-    if (run.id === selectedRunId || selectedRoomId && roomAt(agent.point, canvas.height)?.id === selectedRoomId) {
+    if (focusedFeatureIds && !focusedFeatureIds.has(run.id)) ctx.globalAlpha = .25;
+    if (focusedFeatureIds?.has(run.id) || run.id === selectedRunId || selectedRoomId && roomAt(agent.point, canvas.height)?.id === selectedRoomId) {
       ctx.strokeStyle = theme.ui.sage; ctx.lineWidth = 2;
       ctx.strokeRect(x - 5, y - 3, 46, 48);
     }
@@ -1077,6 +1097,7 @@ function drawSessionFloor(tick: number, now: number): void {
     ctx.save(); ctx.strokeStyle = theme.ui.sage; ctx.globalAlpha = .55; ctx.setLineDash([4, 5]);
     for (const child of sessions) {
       const parent = sessions.find((run) => run.sessionId === child.parentSessionId);
+      if (focusedFeatureIds && (!focusedFeatureIds.has(child.id) || !parent || !focusedFeatureIds.has(parent.id))) continue;
       if (!parent || (selectedRunId && child.id !== selectedRunId && parent.id !== selectedRunId)) continue;
       const a = agentPositions.get(parent.sessionId ?? parent.id)?.point;
       const b = agentPositions.get(child.sessionId ?? child.id)?.point;
