@@ -14,12 +14,20 @@ export function fitProjection(width: number, height: number, canvasWidth: number
 export function zoomScroll(scroll: number, anchor: number, from: number, to: number): number {
   return Math.max(0, (scroll + anchor) * to / from - anchor);
 }
+export function followScroll(target: number, viewportSize: number, scrollSize: number): number {
+  return Math.max(0, Math.min(Math.max(0, scrollSize - viewportSize), target - viewportSize / 2));
+}
 
 /** Camera changes only presentation; tool execution always stays in OpenCode. */
 export function attachStudioCamera(canvas: HTMLCanvasElement, selectedPoint: () => { x: number; y: number } | undefined, allowWide: () => boolean = () => true) {
   const viewport = canvas.parentElement!;
   const readout = document.getElementById("zoomValue")!;
   let zoom = 1, fitting = true, draggedUntil = 0;
+  let following = false;
+  function stopFollow() {
+    if (!following) return;
+    following = false; canvas.dispatchEvent(new Event("studio-follow-change"));
+  }
   let aspect = 1, paintedAspect = 1;
   const app = document.querySelector(".app");
   const collapsed = () => !!app?.classList.contains("activity-collapsed");
@@ -43,6 +51,7 @@ export function attachStudioCamera(canvas: HTMLCanvasElement, selectedPoint: () 
     const desktop = window.innerWidth > 960;
     const changed = hidden !== wasCollapsed;
     if (changed) {
+      stopFollow();
       if (hidden) {
         previousView = { zoom, fitting, aspect, left: viewport.scrollLeft, top: viewport.scrollTop, desktop };
         fitting = true;
@@ -53,7 +62,7 @@ export function attachStudioCamera(canvas: HTMLCanvasElement, selectedPoint: () 
       }
       wasCollapsed = hidden;
     }
-    if (desktop !== wasDesktop) { fitting = true; viewport.scrollTo(0, 0); wasDesktop = desktop; }
+    if (desktop !== wasDesktop) { stopFollow(); fitting = true; viewport.scrollTo(0, 0); wasDesktop = desktop; }
     if (fitting) {
       const bounds = size(), projection = fitProjection(bounds.width, bounds.height, canvas.width, canvas.height, hidden && desktop && allowWide());
       zoom = projection.y; aspect = projection.x / zoom;
@@ -62,7 +71,8 @@ export function attachStudioCamera(canvas: HTMLCanvasElement, selectedPoint: () 
     if (changed) viewport.scrollTo(hidden || fitting ? 0 : previousView?.left ?? 0, hidden || fitting ? 0 : previousView?.top ?? 0);
     if (changed && !hidden) previousView = undefined;
   }
-  function setZoom(value: number, x = viewport.clientWidth / 2, y = viewport.clientHeight / 2) {
+  function setZoom(value: number, x = viewport.clientWidth / 2, y = viewport.clientHeight / 2, manual = true) {
+    if (manual) stopFollow();
     const bounds = size();
     const minimum = Math.min(.2, zoom, fitZoom(bounds.width, bounds.height, canvas.width, canvas.height));
     const next = clampZoom(value, minimum);
@@ -75,20 +85,35 @@ export function attachStudioCamera(canvas: HTMLCanvasElement, selectedPoint: () 
     viewport.scrollLeft = Math.max(0, contentX * zoom * aspect + newLeft - x);
     viewport.scrollTop = Math.max(0, contentY * zoom + 12 - y);
   }
-  function fit() { fitting = true; updateSize(); viewport.scrollTo(0, 0); }
-  function focus() {
+  function fit() { stopFollow(); fitting = true; updateSize(); viewport.scrollTo(0, 0); }
+  function focus(manual = true) {
+    if (manual) stopFollow();
     const point = selectedPoint();
     if (!point) return;
-    setZoom(Math.max(zoom, 1.2));
+    setZoom(Math.max(zoom, 1.2), undefined, undefined, false);
     const left = canvas.getBoundingClientRect().left - viewport.getBoundingClientRect().left + viewport.scrollLeft;
     viewport.scrollLeft = Math.max(0, point.x * zoom * aspect + left - viewport.clientWidth / 2);
     viewport.scrollTop = Math.max(0, (point.y - 20) * zoom + 12 - viewport.clientHeight / 2);
   }
+  function startFollow() {
+    if (!selectedPoint()) return;
+    focus(false); following = true;
+    canvas.dispatchEvent(new Event("studio-follow-change"));
+  }
+  function updateFollow() {
+    if (!following || document.visibilityState !== "visible") return;
+    const point = selectedPoint();
+    if (!point) { stopFollow(); return; }
+    const left = canvas.getBoundingClientRect().left - viewport.getBoundingClientRect().left + viewport.scrollLeft;
+    viewport.scrollLeft = followScroll(point.x * zoom * aspect + left, viewport.clientWidth, viewport.scrollWidth);
+    viewport.scrollTop = followScroll((point.y - 20) * zoom + 12, viewport.clientHeight, viewport.scrollHeight);
+  }
   (document.getElementById("zoomIn") as HTMLButtonElement).onclick = () => setZoom(zoom * 1.25);
   (document.getElementById("zoomOut") as HTMLButtonElement).onclick = () => setZoom(zoom / 1.25);
   (document.getElementById("zoomFit") as HTMLButtonElement).onclick = fit;
-  (document.getElementById("zoomFocus") as HTMLButtonElement).onclick = focus;
+  (document.getElementById("zoomFocus") as HTMLButtonElement).onclick = () => focus();
   viewport.addEventListener("wheel", (event) => {
+    stopFollow();
     if (!event.ctrlKey) return;
     event.preventDefault();
     const rect = viewport.getBoundingClientRect();
@@ -102,6 +127,7 @@ export function attachStudioCamera(canvas: HTMLCanvasElement, selectedPoint: () 
     const before = pointers.get(event.pointerId);
     if (!before) return;
     const next = { x: event.clientX, y: event.clientY };
+    if (next.x !== before.x || next.y !== before.y) stopFollow();
     const other = [...pointers].find(([id]) => id !== event.pointerId)?.[1];
     if (other) {
       const oldDistance = Math.hypot(before.x - other.x, before.y - other.y);
@@ -125,5 +151,5 @@ export function attachStudioCamera(canvas: HTMLCanvasElement, selectedPoint: () 
   viewport.addEventListener("lostpointercapture", release);
   new ResizeObserver(updateSize).observe(viewport);
   updateSize();
-  return { updateSize, focus, horizontalAspect: () => aspect, suppressClick: () => performance.now() < draggedUntil };
+  return { updateSize, focus, startFollow, stopFollow, updateFollow, isFollowing: () => following, horizontalAspect: () => aspect, suppressClick: () => performance.now() < draggedUntil };
 }

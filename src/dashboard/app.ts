@@ -142,6 +142,7 @@ let selectedRoomId: string | undefined;
 let roomNotice = "";
 let lastRoomSignature = "";
 let showRelations = false;
+let followedRunId: string | undefined;
 const relationsToggle = document.getElementById("toggleRelations") as HTMLButtonElement;
 relationsToggle.onclick = () => {
   showRelations = !showRelations;
@@ -150,9 +151,25 @@ relationsToggle.onclick = () => {
   draw();
 };
 const camera = attachStudioCamera(canvas, () => {
-  const focus = currentFocus();
+  const focus = followedRunId ? visibleAgents().find(run => run.id === followedRunId) : currentFocus();
   return focus ? agentPositions.get(focus.sessionId ?? focus.id)?.point : undefined;
 }, () => mirrorOnly);
+const followToggle = document.getElementById("toggleFollow") as HTMLButtonElement;
+function renderFollowControl(): void {
+  const focus = currentFocus();
+  followToggle.hidden = !mirrorOnly;
+  followToggle.disabled = !focus || !visibleAgents().some(run => run.id === focus.id) || !streamReady || !latestFetchOkay || connection.dataset.state !== "online";
+  followToggle.textContent = camera.isFollowing() ? "Stop following" : "Follow agent";
+  followToggle.setAttribute("aria-pressed", String(camera.isFollowing()));
+}
+canvas.addEventListener("studio-follow-change", () => {
+  if (!camera.isFollowing()) followedRunId = undefined;
+  renderFollowControl();
+});
+followToggle.onclick = () => {
+  if (camera.isFollowing()) camera.stopFollow();
+  else { followedRunId = currentFocus()?.id; camera.startFollow(); }
+};
 let projectionPaintPending = false;
 canvas.addEventListener("studio-projection-change", () => {
   studioDirty = true;
@@ -162,6 +179,10 @@ canvas.addEventListener("studio-projection-change", () => {
 });
 
 function selectAgent(runId: string): void {
+  if (camera.isFollowing()) {
+    if (visibleAgents().some(run => run.id === runId)) followedRunId = runId;
+    else camera.stopFollow();
+  }
   if (selectedRoomId && !currentRoomRuns().some(run => run.id === runId)) { selectedRoomId = undefined; roomNotice = ""; }
   selectedRunId = runId;
   panelLayout.showActivity();
@@ -210,6 +231,7 @@ function currentFocus(): Run | undefined {
 }
 
 function selectRoom(id?: string, notice = ""): void {
+  camera.stopFollow();
   selectedRoomId = id;
   selectedRunId = undefined;
   roomNotice = notice;
@@ -351,6 +373,8 @@ function renderConnection(): void {
     managed: healthInfo.leaseManaged === true, leases: healthInfo.activeLeases ?? 0, active: visibleAgents().length, attempted: healthAttempted });
   connection.dataset.state = status.state;
   connection.textContent = status.text;
+  if (status.state === "offline") camera.stopFollow();
+  renderFollowControl();
   renderAttention(status.state === "offline" && healthAttempted ? status.text : undefined);
   canvas.dataset.sync = status.state;
   const lastEvent = document.getElementById("lastEvent") as HTMLElement;
@@ -413,6 +437,7 @@ function renderPanels(): void {
   renderRoomControls();
   const focus = currentFocus();
   lastPanelFocusId = focus?.id;
+  renderFollowControl();
   relationsToggle.hidden = !mirrorOnly;
   (document.getElementById("zoomFocus") as HTMLButtonElement).disabled = !focus || !sessions.some((run) => run.id === focus.id);
   (document.getElementById("timelineSection") as HTMLElement).hidden = !mirrorOnly;
@@ -1034,6 +1059,7 @@ function drawSessionFloor(tick: number, now: number): void {
   }
   if (sessions.length === 0) {
     agentPositions.clear();
+    camera.updateFollow();
     waitingSchedules.clear();
     doorOpenness.clear();
     drawStudioDoors(now);
@@ -1044,6 +1070,7 @@ function drawSessionFloor(tick: number, now: number): void {
   }
   drawStudioDoors(now);
   drawOfficeAgents(sessions, tick, now);
+  camera.updateFollow();
   drawResultTransfers(now, sessions);
   renderRoomInspector(true);
   if (showRelations) {
