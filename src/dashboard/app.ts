@@ -2,12 +2,12 @@ import { deskPoint, roomRect, type Rect } from "./layout";
 import { displayWorkRole, resolveWorkRole } from "./work-role";
 import { resolveFocus, hitAgent, delegationRows } from "./agent-inspector";
 import { stepDuration, type ActivityStep, type ActiveTool } from "../shared/run-history";
-import { attachStudioCamera } from "./studio-camera";
+import { attachStudioCamera, type CameraView } from "./studio-camera";
 import { attachPanelLayout } from "./panel-layout";
 import { connectionStatus } from "./connection-status";
 import { selectVisibleAgents } from "./live-agents";
 import { allocateStudioSeats, studioGeometry, studioHeight, type OfficeStation, type StudioSeat } from "./studio-seating";
-import { getStudioPeriod, STUDIO_THEMES } from "./studio-theme";
+import { getStudioPeriod, STUDIO_THEMES, type StudioPeriod } from "./studio-theme";
 import { advanceTimedRoute, planRoute, type Direction, type Point } from "./agent-motion";
 import { drawExpandedOffice } from "./studio-art";
 import { stationForRun, waitingFor, currentWorkActivity, STATION_LABEL } from "./studio-workflow";
@@ -17,6 +17,8 @@ import { activityBubble } from "./activity-bubble";
 import { attentionFor, attentionRuns } from "./agent-attention";
 import { loadPreferences, savePreferences, normalizePreferences, chosenPeriod, motionPolicy } from "./visual-preferences";
 import { taskSummary } from "./task-summary";
+import { featureRoot, featureMembers } from "./feature-focus";
+import { downloadStudioPng, photoFilename } from "./photo-export";
 import { completionTransfers, transferPoint, type TransferSeed } from "./result-transfers";
 import { studioRooms, roomAt, roomResidents, hitComputer } from "./studio-interactions";
 import { STUDIO_DOORS, STUDIO_WIDTH, STUDIO_BASE_HEIGHT, STUDIO_ENTRY, STUDIO_OBSTACLES } from "./studio-map";
@@ -142,6 +144,17 @@ let selectedRoomId: string | undefined;
 let roomNotice = "";
 let lastRoomSignature = "";
 let showRelations = false;
+let followedRunId: string | undefined;
+let featureRootId: string | undefined;
+let focusedFeatureIds: Set<string> | undefined;
+let photoMode = false;
+let photoPeriod: StudioPeriod | undefined;
+let photoLabels = "roles";
+const featureToggle = document.getElementById("toggleFeatureFocus") as HTMLButtonElement;
+featureToggle.onclick = () => {
+  featureRootId = featureRootId ? undefined : featureRoot(runs, currentFocus()?.id ?? "");
+  renderPanels(); draw();
+};
 const relationsToggle = document.getElementById("toggleRelations") as HTMLButtonElement;
 relationsToggle.onclick = () => {
   showRelations = !showRelations;
@@ -150,9 +163,25 @@ relationsToggle.onclick = () => {
   draw();
 };
 const camera = attachStudioCamera(canvas, () => {
-  const focus = currentFocus();
+  const focus = followedRunId ? visibleAgents().find(run => run.id === followedRunId) : currentFocus();
   return focus ? agentPositions.get(focus.sessionId ?? focus.id)?.point : undefined;
 }, () => mirrorOnly);
+const followToggle = document.getElementById("toggleFollow") as HTMLButtonElement;
+function renderFollowControl(): void {
+  const focus = currentFocus();
+  followToggle.hidden = !mirrorOnly;
+  followToggle.disabled = !focus || !visibleAgents().some(run => run.id === focus.id) || !streamReady || !latestFetchOkay || connection.dataset.state !== "online";
+  followToggle.textContent = camera.isFollowing() ? "Stop following" : "Follow agent";
+  followToggle.setAttribute("aria-pressed", String(camera.isFollowing()));
+}
+canvas.addEventListener("studio-follow-change", () => {
+  if (!camera.isFollowing()) followedRunId = undefined;
+  renderFollowControl();
+});
+followToggle.onclick = () => {
+  if (camera.isFollowing()) camera.stopFollow();
+  else { followedRunId = currentFocus()?.id; camera.startFollow(); }
+};
 let projectionPaintPending = false;
 canvas.addEventListener("studio-projection-change", () => {
   studioDirty = true;
@@ -162,6 +191,10 @@ canvas.addEventListener("studio-projection-change", () => {
 });
 
 function selectAgent(runId: string): void {
+  if (camera.isFollowing()) {
+    if (visibleAgents().some(run => run.id === runId)) followedRunId = runId;
+    else camera.stopFollow();
+  }
   if (selectedRoomId && !currentRoomRuns().some(run => run.id === runId)) { selectedRoomId = undefined; roomNotice = ""; }
   selectedRunId = runId;
   panelLayout.showActivity();
@@ -170,7 +203,7 @@ function selectAgent(runId: string): void {
 }
 
 canvas.addEventListener("click", (event) => {
-  if (!mirrorOnly || camera.suppressClick()) return;
+  if (photoMode || !mirrorOnly || camera.suppressClick()) return;
   const bounds = canvas.getBoundingClientRect();
   const point = { x: (event.clientX - bounds.left) * canvas.width / bounds.width, y: (event.clientY - bounds.top) * canvas.height / bounds.height };
   const sessionId = hitAgent([...agentPositions].map(([id, agent]) => ({ id, ...agent.point })),
@@ -210,12 +243,59 @@ function currentFocus(): Run | undefined {
 }
 
 function selectRoom(id?: string, notice = ""): void {
+  camera.stopFollow();
   selectedRoomId = id;
   selectedRunId = undefined;
   roomNotice = notice;
   panelLayout.showActivity();
   renderPanels(); draw();
 }
+
+const photoToggle = document.getElementById("enterPhoto") as HTMLButtonElement;
+const photoControls = document.getElementById("photoControls") as HTMLElement;
+const normalCanvasLabel = canvas.getAttribute("aria-label") ?? "Live office floor";
+let photoCameraView: CameraView | undefined;
+function setPhotoMode(enabled: boolean): void {
+  if (enabled === photoMode) return;
+  if (enabled) photoCameraView = camera.captureView();
+  photoMode = enabled;
+  camera.stopFollow();
+  photoPeriod = undefined; photoLabels = "roles";
+  (document.getElementById("photoTheme") as HTMLSelectElement).value = "current";
+  (document.getElementById("photoLabels") as HTMLSelectElement).value = "roles";
+  (document.getElementById("photoStatus") as HTMLElement).textContent = "Exports the studio only. Activity labels may contain filenames.";
+  photoControls.hidden = !enabled;
+  document.documentElement.classList.toggle("photo-mode", enabled);
+  canvas.setAttribute("aria-label", enabled ? "Studio photo preview. Use photo controls to choose a theme, labels or export PNG." : normalCanvasLabel);
+  updateStudioClock(); studioDirty = true;
+  window.requestAnimationFrame(() => {
+    if (enabled) camera.fit();
+    else if (photoCameraView) { camera.restoreView(photoCameraView); photoCameraView = undefined; }
+    draw();
+  });
+  if (enabled) (document.getElementById("exportPhoto") as HTMLButtonElement).focus({ preventScroll: true });
+  else photoToggle.focus({ preventScroll: true });
+}
+photoToggle.onclick = () => setPhotoMode(true);
+document.getElementById("exitPhoto")!.onclick = () => setPhotoMode(false);
+document.addEventListener("keydown", event => { if (photoMode && event.key === "Escape") { event.preventDefault(); setPhotoMode(false); } });
+document.getElementById("photoTheme")!.addEventListener("change", event => {
+  const value = (event.target as HTMLSelectElement).value;
+  photoPeriod = value === "current" ? undefined : value as StudioPeriod;
+  updateStudioClock(); studioDirty = true; draw();
+});
+document.getElementById("photoLabels")!.addEventListener("change", event => { photoLabels = (event.target as HTMLSelectElement).value; draw(); });
+const exportPhoto = document.getElementById("exportPhoto") as HTMLButtonElement;
+exportPhoto.onclick = async () => {
+  exportPhoto.disabled = true;
+  const status = document.getElementById("photoStatus") as HTMLElement;
+  try {
+    camera.updateSize(); draw();
+    const size = await downloadStudioPng(canvas, camera.horizontalAspect(), photoFilename(studioPeriod, new Date()));
+    status.textContent = `PNG downloaded · ${size.width} × ${size.height}`;
+  } catch { status.textContent = "Could not export PNG. Try again or use your browser screenshot tool."; }
+  finally { exportPhoto.disabled = false; }
+};
 
 function renderRoomControls(): void {
   const controls = document.getElementById("roomControls") as HTMLElement;
@@ -263,7 +343,7 @@ function renderRoomInspector(syncFocus = false): void {
 
 function updateStudioClock(): boolean {
   const date = new Date();
-  const period = chosenPeriod(preferences, date);
+  const period = photoMode && photoPeriod ? photoPeriod : chosenPeriod(preferences, date);
   const changed = period !== studioPeriod;
   studioPeriod = period;
   theme = STUDIO_THEMES[period];
@@ -351,6 +431,8 @@ function renderConnection(): void {
     managed: healthInfo.leaseManaged === true, leases: healthInfo.activeLeases ?? 0, active: visibleAgents().length, attempted: healthAttempted });
   connection.dataset.state = status.state;
   connection.textContent = status.text;
+  if (status.state === "offline") camera.stopFollow();
+  renderFollowControl();
   renderAttention(status.state === "offline" && healthAttempted ? status.text : undefined);
   canvas.dataset.sync = status.state;
   const lastEvent = document.getElementById("lastEvent") as HTMLElement;
@@ -405,6 +487,15 @@ function renderPanels(): void {
   const focusedKey = (document.activeElement as HTMLElement | null)?.dataset.focusKey;
   const runById = new Map(runs.map((run) => [run.id, run]));
   const sessions = mirrorOnly ? visibleAgents() : [];
+  focusedFeatureIds = featureRootId ? featureMembers(runs, featureRootId) : undefined;
+  if (focusedFeatureIds && !sessions.some(run => focusedFeatureIds!.has(run.id))) { featureRootId = undefined; focusedFeatureIds = undefined; }
+  featureToggle.hidden = !mirrorOnly;
+  featureToggle.disabled = !featureRootId && !sessions.some(run => run.id === currentFocus()?.id);
+  featureToggle.setAttribute("aria-pressed", String(!!featureRootId));
+  featureToggle.textContent = featureRootId ? "Clear feature focus" : "Focus feature";
+  const featureLabel = document.getElementById("featureFocusLabel") as HTMLElement;
+  featureLabel.hidden = !featureRootId;
+  featureLabel.textContent = featureRootId ? `Feature: ${short(runs.find(run => run.id === featureRootId)?.prompt ?? "Selected team", 36)} · ${sessions.filter(run => focusedFeatureIds?.has(run.id)).length} active` : "";
   renderTaskSummaries();
   studioSeats = allocateStudioSeats(sessions.map((run) => ({ id: run.sessionId ?? run.id, station: stationFor(run) })), studioSeats);
   const nextGeometry = studioGeometry(studioSeats, occupiedStudioHeight());
@@ -413,6 +504,7 @@ function renderPanels(): void {
   renderRoomControls();
   const focus = currentFocus();
   lastPanelFocusId = focus?.id;
+  renderFollowControl();
   relationsToggle.hidden = !mirrorOnly;
   (document.getElementById("zoomFocus") as HTMLButtonElement).disabled = !focus || !sessions.some((run) => run.id === focus.id);
   (document.getElementById("timelineSection") as HTMLElement).hidden = !mirrorOnly;
@@ -437,6 +529,7 @@ function renderPanels(): void {
   teamList.replaceChildren(...delegationRows(sessions).map(({run,depth}) => {
     const parent = latestSessions.get(run.parentSessionId);
     const item = element("li", "team-item");
+    item.dataset.feature = focusedFeatureIds && !focusedFeatureIds.has(run.id) ? "outside" : "inside";
     item.style.marginLeft = `${Math.min(depth, 6) * 12}px`;
     const choose = element("button", "team-select", `${run.parentSessionId ? "↳ " : "● "}${roleFor(run)} · ${short(run.prompt, 40)}`);
     choose.type = "button";
@@ -532,6 +625,7 @@ function renderPanels(): void {
       const card = element("li", "crew-card");
       card.dataset.state = run.state;
       card.dataset.selected = String(focus?.id === run.id);
+      card.dataset.feature = focusedFeatureIds && !focusedFeatureIds.has(run.id) ? "outside" : "inside";
       card.style.setProperty("--room-color", activityOf(run).color);
       const avatar = element("span", "crew-avatar");
       const portrait = document.createElement("canvas");
@@ -780,7 +874,7 @@ function drawRoom(room: Room, index: number, runById: Map<string, Run>, tick: nu
     const roleColor = ROLE_PILL[run.role] ?? "#a0a4ad";
     ctx.fillStyle = roleColor;
     ctx.fillRect(characterX - 2, characterY + 28, 28, 4);
-    const bubble = preferences.bubbles ? BUBBLE_TEXT[run.state]?.(run) : null;
+    const bubble = preferences.bubbles && (!photoMode || photoLabels === "all") ? BUBBLE_TEXT[run.state]?.(run) : null;
     if (bubble) {
       ctx.font = 'bold 10px "Courier New", monospace';
       const width = Math.ceil(ctx.measureText(bubble).width) + 12;
@@ -824,6 +918,7 @@ function stationFor(run: Run): OfficeStation {
 }
 
 function drawAgentBubble(run: Run, x: number, y: number, color: string, lane: number): void {
+  if (photoMode && photoLabels !== "all") return;
   if (!preferences.bubbles) return;
   const text = activityBubble(run, stationFor(run) === "waiting" ? activityOf(run).label : undefined);
   const fontSize = Math.round(11 * labelScale());
@@ -862,6 +957,7 @@ function drawStudioDoors(now: number): void {
 }
 
 function drawWorkRoleBadge(role: string, x: number, y: number, scale: number, color: string, compact = false): void {
+  if (photoMode && photoLabels === "none") return;
   const caption = short(role.toUpperCase(), compact ? 6 : 14);
   const fontSize = Math.round((compact ? 8 : 10) * labelScale());
   ctx.font = `bold ${fontSize}px "Courier New", monospace`;
@@ -945,7 +1041,8 @@ function drawOfficeAgents(sessions: Run[], tick: number, now: number): void {
     const palette = agentPalette(workRole, id);
     ctx.save();
     ctx.translate(agent.point.x, 0); ctx.scale(1 / camera.horizontalAspect(), 1); ctx.translate(-agent.point.x, 0);
-    if (run.id === selectedRunId || selectedRoomId && roomAt(agent.point, canvas.height)?.id === selectedRoomId) {
+    if (focusedFeatureIds && !focusedFeatureIds.has(run.id)) ctx.globalAlpha = .25;
+    if (focusedFeatureIds?.has(run.id) || run.id === selectedRunId || selectedRoomId && roomAt(agent.point, canvas.height)?.id === selectedRoomId) {
       ctx.strokeStyle = theme.ui.sage; ctx.lineWidth = 2;
       ctx.strokeRect(x - 5, y - 3, 46, 48);
     }
@@ -969,7 +1066,7 @@ function drawOfficeAgents(sessions: Run[], tick: number, now: number): void {
       for (let dot = 0; dot < 3; dot++) ctx.fillRect(x + 36 + dot * 7, y - 10 - (tick + dot) % 2 * 3, 4, 4);
     }
     if (sessions.length <= 4 || run.id === selectedRunId) drawAgentBubble(run, x, y, activity.color, 0);
-    else {
+    else if (!photoMode || photoLabels === "all") {
       const mark = ({ thinking: "…", delegating: "↔", reading: "R", editing: "E", "web-search": "W", terminal: ">_", approval: "!", lounge: "·", arrival: "→", review: "QA", waiting: "…" })[station];
       ctx.fillStyle = "#242747"; ctx.fillRect(x + 30, y + 5, 21, 16);
       textOnCanvas(mark, x + 33, y + 7, activity.color, 10);
@@ -1034,6 +1131,7 @@ function drawSessionFloor(tick: number, now: number): void {
   }
   if (sessions.length === 0) {
     agentPositions.clear();
+    camera.updateFollow();
     waitingSchedules.clear();
     doorOpenness.clear();
     drawStudioDoors(now);
@@ -1044,12 +1142,14 @@ function drawSessionFloor(tick: number, now: number): void {
   }
   drawStudioDoors(now);
   drawOfficeAgents(sessions, tick, now);
+  camera.updateFollow();
   drawResultTransfers(now, sessions);
   renderRoomInspector(true);
   if (showRelations) {
     ctx.save(); ctx.strokeStyle = theme.ui.sage; ctx.globalAlpha = .55; ctx.setLineDash([4, 5]);
     for (const child of sessions) {
       const parent = sessions.find((run) => run.sessionId === child.parentSessionId);
+      if (focusedFeatureIds && (!focusedFeatureIds.has(child.id) || !parent || !focusedFeatureIds.has(parent.id))) continue;
       if (!parent || (selectedRunId && child.id !== selectedRunId && parent.id !== selectedRunId)) continue;
       const a = agentPositions.get(parent.sessionId ?? parent.id)?.point;
       const b = agentPositions.get(child.sessionId ?? child.id)?.point;
@@ -1058,6 +1158,7 @@ function drawSessionFloor(tick: number, now: number): void {
     ctx.restore();
   }
   const primary = sessions[0];
+  if (photoMode) return;
   ctx.fillStyle = "#1b1d3b"; ctx.fillRect(42, canvas.height - 27, canvas.width - 84, 16);
   ctx.fillStyle = activityOf(primary).color; ctx.fillRect(42, canvas.height - 27, 5, 16);
   textOnCanvas(short(primary.prompt || "OpenCode session", 47), 54, canvas.height - 25, COLORS.light, 11);

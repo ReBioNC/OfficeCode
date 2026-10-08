@@ -57,6 +57,7 @@ export function attachPanelLayout(): { showActivity: () => void } {
     const container = app.clientWidth;
     state.ratio = activityWidth(container, width / container) / container;
     apply();
+    window.dispatchEvent(new Event("studio-layout-manual"));
   }
   function finishDrag(cancel = false) {
     if (!drag) return;
@@ -71,6 +72,7 @@ export function attachPanelLayout(): { showActivity: () => void } {
     finishDrag(true);
     state = { ...DEFAULT_PANEL_LAYOUT };
     apply(); save();
+    window.dispatchEvent(new Event("studio-layout-manual"));
   }
   toggle.addEventListener("click", () => {
     finishDrag(true);

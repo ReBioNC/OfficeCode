@@ -1,6 +1,6 @@
 import { it } from "node:test";
 import assert from "node:assert/strict";
-import { clampZoom, zoomScroll, fitZoom, fitProjection } from "../src/dashboard/studio-camera.js";
+import { clampZoom, zoomScroll, fitZoom, fitProjection, followScroll } from "../src/dashboard/studio-camera.js";
 
 it("keeps zoom bounded and fits tall overflow studios into the available viewport", () => {
   assert.equal(clampZoom(9), 4);
@@ -8,6 +8,12 @@ it("keeps zoom bounded and fits tall overflow studios into the available viewpor
   assert.equal(fitZoom(480, 280, 960, 560), .5);
   assert.equal(fitZoom(480, 280, 960, 1120), .25);
   assert.equal(clampZoom(Number.NaN), 1);
+});
+it("centers a followed point within actual scroll bounds", () => {
+  assert.equal(followScroll(500, 400, 1600), 300);
+  assert.equal(followScroll(40, 400, 1600), 0);
+  assert.equal(followScroll(1500, 400, 1600), 1200);
+  assert.equal(followScroll(500, 800, 600), 0);
 });
 it("fills horizontal space in wide fit while keeping the entire vertical studio visible", () => {
   assert.deepEqual(fitProjection(1800, 760, 1440, 1140, true), { x: 1.25, y: 760 / 1140 });
