@@ -149,6 +149,8 @@ export function attachStudioCamera(canvas: HTMLCanvasElement, selectedPoint: () 
   window.addEventListener("pointerup", release);
   viewport.addEventListener("pointercancel", release);
   viewport.addEventListener("lostpointercapture", release);
+  window.addEventListener("studio-layout-manual", stopFollow);
+  window.addEventListener("resize", stopFollow);
   new ResizeObserver(updateSize).observe(viewport);
   updateSize();
   return { updateSize, focus, startFollow, stopFollow, updateFollow, isFollowing: () => following, horizontalAspect: () => aspect, suppressClick: () => performance.now() < draggedUntil };
