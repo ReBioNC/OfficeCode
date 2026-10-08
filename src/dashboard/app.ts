@@ -2,12 +2,12 @@ import { deskPoint, roomRect, type Rect } from "./layout";
 import { displayWorkRole, resolveWorkRole } from "./work-role";
 import { resolveFocus, hitAgent, delegationRows } from "./agent-inspector";
 import { stepDuration, type ActivityStep, type ActiveTool } from "../shared/run-history";
-import { attachStudioCamera } from "./studio-camera";
+import { attachStudioCamera, type CameraView } from "./studio-camera";
 import { attachPanelLayout } from "./panel-layout";
 import { connectionStatus } from "./connection-status";
 import { selectVisibleAgents } from "./live-agents";
 import { allocateStudioSeats, studioGeometry, studioHeight, type OfficeStation, type StudioSeat } from "./studio-seating";
-import { getStudioPeriod, STUDIO_THEMES } from "./studio-theme";
+import { getStudioPeriod, STUDIO_THEMES, type StudioPeriod } from "./studio-theme";
 import { advanceTimedRoute, planRoute, type Direction, type Point } from "./agent-motion";
 import { drawExpandedOffice } from "./studio-art";
 import { stationForRun, waitingFor, currentWorkActivity, STATION_LABEL } from "./studio-workflow";
@@ -18,6 +18,7 @@ import { attentionFor, attentionRuns } from "./agent-attention";
 import { loadPreferences, savePreferences, normalizePreferences, chosenPeriod, motionPolicy } from "./visual-preferences";
 import { taskSummary } from "./task-summary";
 import { featureRoot, featureMembers } from "./feature-focus";
+import { downloadStudioPng, photoFilename } from "./photo-export";
 import { completionTransfers, transferPoint, type TransferSeed } from "./result-transfers";
 import { studioRooms, roomAt, roomResidents, hitComputer } from "./studio-interactions";
 import { STUDIO_DOORS, STUDIO_WIDTH, STUDIO_BASE_HEIGHT, STUDIO_ENTRY, STUDIO_OBSTACLES } from "./studio-map";
@@ -146,6 +147,9 @@ let showRelations = false;
 let followedRunId: string | undefined;
 let featureRootId: string | undefined;
 let focusedFeatureIds: Set<string> | undefined;
+let photoMode = false;
+let photoPeriod: StudioPeriod | undefined;
+let photoLabels = "roles";
 const featureToggle = document.getElementById("toggleFeatureFocus") as HTMLButtonElement;
 featureToggle.onclick = () => {
   featureRootId = featureRootId ? undefined : featureRoot(runs, currentFocus()?.id ?? "");
@@ -199,7 +203,7 @@ function selectAgent(runId: string): void {
 }
 
 canvas.addEventListener("click", (event) => {
-  if (!mirrorOnly || camera.suppressClick()) return;
+  if (photoMode || !mirrorOnly || camera.suppressClick()) return;
   const bounds = canvas.getBoundingClientRect();
   const point = { x: (event.clientX - bounds.left) * canvas.width / bounds.width, y: (event.clientY - bounds.top) * canvas.height / bounds.height };
   const sessionId = hitAgent([...agentPositions].map(([id, agent]) => ({ id, ...agent.point })),
@@ -247,6 +251,52 @@ function selectRoom(id?: string, notice = ""): void {
   renderPanels(); draw();
 }
 
+const photoToggle = document.getElementById("enterPhoto") as HTMLButtonElement;
+const photoControls = document.getElementById("photoControls") as HTMLElement;
+const normalCanvasLabel = canvas.getAttribute("aria-label") ?? "Live office floor";
+let photoCameraView: CameraView | undefined;
+function setPhotoMode(enabled: boolean): void {
+  if (enabled === photoMode) return;
+  if (enabled) photoCameraView = camera.captureView();
+  photoMode = enabled;
+  camera.stopFollow();
+  photoPeriod = undefined; photoLabels = "roles";
+  (document.getElementById("photoTheme") as HTMLSelectElement).value = "current";
+  (document.getElementById("photoLabels") as HTMLSelectElement).value = "roles";
+  (document.getElementById("photoStatus") as HTMLElement).textContent = "Exports the studio only. Activity labels may contain filenames.";
+  photoControls.hidden = !enabled;
+  document.documentElement.classList.toggle("photo-mode", enabled);
+  canvas.setAttribute("aria-label", enabled ? "Studio photo preview. Use photo controls to choose a theme, labels or export PNG." : normalCanvasLabel);
+  updateStudioClock(); studioDirty = true;
+  window.requestAnimationFrame(() => {
+    if (enabled) camera.fit();
+    else if (photoCameraView) { camera.restoreView(photoCameraView); photoCameraView = undefined; }
+    draw();
+  });
+  if (enabled) (document.getElementById("exportPhoto") as HTMLButtonElement).focus({ preventScroll: true });
+  else photoToggle.focus({ preventScroll: true });
+}
+photoToggle.onclick = () => setPhotoMode(true);
+document.getElementById("exitPhoto")!.onclick = () => setPhotoMode(false);
+document.addEventListener("keydown", event => { if (photoMode && event.key === "Escape") { event.preventDefault(); setPhotoMode(false); } });
+document.getElementById("photoTheme")!.addEventListener("change", event => {
+  const value = (event.target as HTMLSelectElement).value;
+  photoPeriod = value === "current" ? undefined : value as StudioPeriod;
+  updateStudioClock(); studioDirty = true; draw();
+});
+document.getElementById("photoLabels")!.addEventListener("change", event => { photoLabels = (event.target as HTMLSelectElement).value; draw(); });
+const exportPhoto = document.getElementById("exportPhoto") as HTMLButtonElement;
+exportPhoto.onclick = async () => {
+  exportPhoto.disabled = true;
+  const status = document.getElementById("photoStatus") as HTMLElement;
+  try {
+    camera.updateSize(); draw();
+    const size = await downloadStudioPng(canvas, camera.horizontalAspect(), photoFilename(studioPeriod, new Date()));
+    status.textContent = `PNG downloaded · ${size.width} × ${size.height}`;
+  } catch { status.textContent = "Could not export PNG. Try again or use your browser screenshot tool."; }
+  finally { exportPhoto.disabled = false; }
+};
+
 function renderRoomControls(): void {
   const controls = document.getElementById("roomControls") as HTMLElement;
   controls.hidden = !mirrorOnly;
@@ -293,7 +343,7 @@ function renderRoomInspector(syncFocus = false): void {
 
 function updateStudioClock(): boolean {
   const date = new Date();
-  const period = chosenPeriod(preferences, date);
+  const period = photoMode && photoPeriod ? photoPeriod : chosenPeriod(preferences, date);
   const changed = period !== studioPeriod;
   studioPeriod = period;
   theme = STUDIO_THEMES[period];
@@ -824,7 +874,7 @@ function drawRoom(room: Room, index: number, runById: Map<string, Run>, tick: nu
     const roleColor = ROLE_PILL[run.role] ?? "#a0a4ad";
     ctx.fillStyle = roleColor;
     ctx.fillRect(characterX - 2, characterY + 28, 28, 4);
-    const bubble = preferences.bubbles ? BUBBLE_TEXT[run.state]?.(run) : null;
+    const bubble = preferences.bubbles && (!photoMode || photoLabels === "all") ? BUBBLE_TEXT[run.state]?.(run) : null;
     if (bubble) {
       ctx.font = 'bold 10px "Courier New", monospace';
       const width = Math.ceil(ctx.measureText(bubble).width) + 12;
@@ -868,6 +918,7 @@ function stationFor(run: Run): OfficeStation {
 }
 
 function drawAgentBubble(run: Run, x: number, y: number, color: string, lane: number): void {
+  if (photoMode && photoLabels !== "all") return;
   if (!preferences.bubbles) return;
   const text = activityBubble(run, stationFor(run) === "waiting" ? activityOf(run).label : undefined);
   const fontSize = Math.round(11 * labelScale());
@@ -906,6 +957,7 @@ function drawStudioDoors(now: number): void {
 }
 
 function drawWorkRoleBadge(role: string, x: number, y: number, scale: number, color: string, compact = false): void {
+  if (photoMode && photoLabels === "none") return;
   const caption = short(role.toUpperCase(), compact ? 6 : 14);
   const fontSize = Math.round((compact ? 8 : 10) * labelScale());
   ctx.font = `bold ${fontSize}px "Courier New", monospace`;
@@ -1014,7 +1066,7 @@ function drawOfficeAgents(sessions: Run[], tick: number, now: number): void {
       for (let dot = 0; dot < 3; dot++) ctx.fillRect(x + 36 + dot * 7, y - 10 - (tick + dot) % 2 * 3, 4, 4);
     }
     if (sessions.length <= 4 || run.id === selectedRunId) drawAgentBubble(run, x, y, activity.color, 0);
-    else {
+    else if (!photoMode || photoLabels === "all") {
       const mark = ({ thinking: "…", delegating: "↔", reading: "R", editing: "E", "web-search": "W", terminal: ">_", approval: "!", lounge: "·", arrival: "→", review: "QA", waiting: "…" })[station];
       ctx.fillStyle = "#242747"; ctx.fillRect(x + 30, y + 5, 21, 16);
       textOnCanvas(mark, x + 33, y + 7, activity.color, 10);
@@ -1106,6 +1158,7 @@ function drawSessionFloor(tick: number, now: number): void {
     ctx.restore();
   }
   const primary = sessions[0];
+  if (photoMode) return;
   ctx.fillStyle = "#1b1d3b"; ctx.fillRect(42, canvas.height - 27, canvas.width - 84, 16);
   ctx.fillStyle = activityOf(primary).color; ctx.fillRect(42, canvas.height - 27, 5, 16);
   textOnCanvas(short(primary.prompt || "OpenCode session", 47), 54, canvas.height - 25, COLORS.light, 11);

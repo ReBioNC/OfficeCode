@@ -182,13 +182,22 @@
   .crew-card[data-feature="outside"],.team-item[data-feature="outside"] { opacity:.35; }
     .feature-focus-label { display:block; padding:6px 16px; font:11px "Courier New",monospace; color:var(--sage); }
     .feature-focus-label[hidden] { display:none; }
+  .photo-mode .app { display:grid; grid-template-columns:minmax(0,1fr) 0 0; grid-template-rows:minmax(0,1fr); height:100dvh; min-height:0; overflow:hidden; }
+    .photo-mode .floor-panel { grid-column:1; grid-row:1; }
+    .photo-mode .floor-header,.photo-mode .floor-footer,.photo-mode .studio-toolbar,.photo-mode .room-controls,.photo-mode #visualSettings,.photo-mode #featureFocusLabel,.photo-mode .activity-divider,.photo-mode .command-center,.photo-mode .crew { display:none; }
+    .photo-mode .floor-stage { height:auto; min-height:0; flex:1; }
+    .photo-controls { position:fixed; bottom:12px; left:12px; right:12px; z-index:5; display:flex; flex-wrap:wrap; align-items:center; gap:10px; width:fit-content; max-width:calc(100vw - 24px); margin:auto; padding:12px; border:2px solid var(--frame); box-shadow:3px 3px 0 var(--night); background:var(--panel); color:var(--ink); font:11px "Courier New",monospace; }
+    .photo-controls[hidden] { display:none; }
+    .photo-controls label { display:flex; align-items:center; gap:5px; }
+    .photo-controls select,.photo-controls button { min-height:32px; padding:5px 9px; border:1px solid var(--line); background:var(--light); color:var(--ink); font:11px "Courier New",monospace; }
+    #photoStatus { flex-basis:100%; color:var(--muted); font-size:10px; }
   </style>
 </head>
 <body>
   <div class="app">
     <main class="floor-panel" aria-label="Live office floor">
       <header class="floor-header"><div><p id="studioPeriod" class="eyebrow">Studio / live feed</p><h1>Office<span>Code</span> Studio</h1></div><div class="floor-status"><span id="floorMeta" class="floor-meta">Loading studio…</span><time id="studioClock" aria-label="Local time"></time></div></header>
-      <div class="studio-toolbar" role="group" aria-label="Studio view controls"><button id="zoomOut" type="button" aria-label="Zoom out">−</button><span id="zoomValue" aria-live="polite">100%</span><button id="zoomIn" type="button" aria-label="Zoom in">+</button><button id="zoomFit" type="button">Fit studio</button><button id="zoomFocus" type="button">Focus agent</button><button id="toggleFollow" type="button" aria-pressed="false" hidden>Follow agent</button><button id="toggleFeatureFocus" type="button" aria-pressed="false" hidden>Focus feature</button><button id="toggleRelations" type="button" aria-pressed="false" hidden>Show relations</button><button id="toggleActivity" type="button" aria-controls="activityCenter" aria-expanded="true">Hide activity</button><button id="attentionToggle" type="button" aria-controls="attentionSection" hidden>! Attention</button><button id="settingsToggle" type="button" aria-expanded="false" aria-controls="visualSettings">Visual settings</button><button id="resetLayout" type="button">Reset layout</button><span>Drag to pan · pinch to zoom</span></div>
+      <div class="studio-toolbar" role="group" aria-label="Studio view controls"><button id="zoomOut" type="button" aria-label="Zoom out">−</button><span id="zoomValue" aria-live="polite">100%</span><button id="zoomIn" type="button" aria-label="Zoom in">+</button><button id="zoomFit" type="button">Fit studio</button><button id="zoomFocus" type="button">Focus agent</button><button id="toggleFollow" type="button" aria-pressed="false" hidden>Follow agent</button><button id="toggleFeatureFocus" type="button" aria-pressed="false" hidden>Focus feature</button><button id="toggleRelations" type="button" aria-pressed="false" hidden>Show relations</button><button id="toggleActivity" type="button" aria-controls="activityCenter" aria-expanded="true">Hide activity</button><button id="attentionToggle" type="button" aria-controls="attentionSection" hidden>! Attention</button><button id="settingsToggle" type="button" aria-expanded="false" aria-controls="visualSettings">Visual settings</button><button id="enterPhoto" type="button">Photo mode</button><button id="resetLayout" type="button">Reset layout</button><span>Drag to pan · pinch to zoom</span></div>
       <div id="roomControls" class="room-controls" role="group" aria-label="Inspect office rooms" hidden></div>
       <span id="featureFocusLabel" class="feature-focus-label" role="status" hidden></span>
       <div id="visualSettings" class="visual-settings" role="group" aria-label="Visual settings" hidden>
@@ -219,6 +228,11 @@
       </div>
     </aside>
     <section class="crew" aria-labelledby="crewTitle"><div class="crew-heading"><span class="eyebrow">Studio team</span><h2 id="crewTitle">Agents on the floor</h2><p id="crewCount">Loading…</p></div><ul id="crew" class="crew-list" aria-live="polite"></ul></section>
+  </div>
+  <div id="photoControls" class="photo-controls" role="group" aria-label="Photo controls" hidden>
+    <strong>Photo mode</strong><label>Theme<select id="photoTheme"><option value="current">Current theme</option><option value="morning">Morning</option><option value="day">Day</option><option value="evening">Evening</option><option value="night">Night</option></select></label>
+    <label>Agent labels<select id="photoLabels"><option value="roles">Roles only</option><option value="all">Activity and roles</option><option value="none">Hide agent labels</option></select></label>
+    <button id="exportPhoto" type="button">Export PNG</button><button id="exitPhoto" type="button">Exit photo mode</button><span id="photoStatus" role="status"></span>
   </div>
   <script src="/app.js" defer></script>
 </body>

@@ -25,7 +25,7 @@ describe("dashboard visual-only contract", () => {
     const html = fs.readFileSync("src/dashboard/index.html", "utf8");
     assert.ok(!html.includes("<form"), "sidebar has no forms");
     assert.deepEqual([...html.matchAll(/<input\b[^>]*\bid="([^"]+)"/g)].map(match => match[1]), ["pref-bubbles"], "only the local bubble setting is an input");
-    assert.deepEqual([...html.matchAll(/<select\b[^>]*\bid="([^"]+)"/g)].map(match => match[1]), ["pref-theme", "pref-motion", "pref-labels"], "select controls only customize local visuals");
+    assert.deepEqual([...html.matchAll(/<select\b[^>]*\bid="([^"]+)"/g)].map(match => match[1]), ["pref-theme", "pref-motion", "pref-labels", "photoTheme", "photoLabels"], "select controls only customize local visuals");
   });
   it("shows role pills and status bubbles in the studio", () => {
     const src = fs.readFileSync("src/dashboard/app.ts", "utf8");

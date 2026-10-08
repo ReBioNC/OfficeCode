@@ -17,6 +17,7 @@ export function zoomScroll(scroll: number, anchor: number, from: number, to: num
 export function followScroll(target: number, viewportSize: number, scrollSize: number): number {
   return Math.max(0, Math.min(Math.max(0, scrollSize - viewportSize), target - viewportSize / 2));
 }
+export interface CameraView { zoom: number; aspect: number; fitting: boolean; left: number; top: number; desktop: boolean; collapsed: boolean }
 
 /** Camera changes only presentation; tool execution always stays in OpenCode. */
 export function attachStudioCamera(canvas: HTMLCanvasElement, selectedPoint: () => { x: number; y: number } | undefined, allowWide: () => boolean = () => true) {
@@ -86,6 +87,15 @@ export function attachStudioCamera(canvas: HTMLCanvasElement, selectedPoint: () 
     viewport.scrollTop = Math.max(0, contentY * zoom + 12 - y);
   }
   function fit() { stopFollow(); fitting = true; updateSize(); viewport.scrollTo(0, 0); }
+  function captureView(): CameraView {
+    return { zoom, aspect, fitting, left: viewport.scrollLeft, top: viewport.scrollTop, desktop: window.innerWidth > 960, collapsed: collapsed() };
+  }
+  function restoreView(view: CameraView) {
+    stopFollow();
+    if (view.desktop !== (window.innerWidth > 960) || view.collapsed !== collapsed()) { fit(); return; }
+    zoom = view.zoom; aspect = view.aspect; fitting = view.fitting;
+    updateSize(); viewport.scrollTo(view.left, view.top);
+  }
   function focus(manual = true) {
     if (manual) stopFollow();
     const point = selectedPoint();
@@ -153,5 +163,5 @@ export function attachStudioCamera(canvas: HTMLCanvasElement, selectedPoint: () 
   window.addEventListener("resize", stopFollow);
   new ResizeObserver(updateSize).observe(viewport);
   updateSize();
-  return { updateSize, focus, startFollow, stopFollow, updateFollow, isFollowing: () => following, horizontalAspect: () => aspect, suppressClick: () => performance.now() < draggedUntil };
+  return { updateSize, fit, captureView, restoreView, focus, startFollow, stopFollow, updateFollow, isFollowing: () => following, horizontalAspect: () => aspect, suppressClick: () => performance.now() < draggedUntil };
 }
