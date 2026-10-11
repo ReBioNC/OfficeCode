@@ -12,6 +12,8 @@ import { enqueueOrRun, pendingList, pumpQueue } from "./queue.js";
 import { loadBudgets, saveBudgets, spentToday, overBudget, settleSpend, type BudgetsDoc } from "./budgets.js";
 import { loadModels as loadModelSlots } from "./models.js";
 import type { ActiveTool, ToolResult } from "../shared/run-history.js";
+import { discoverProjects, defaultProjectsRoot, verifyProject } from "./project-discovery.js";
+import type { ProjectDashboard } from "../shared/project-dashboard.js";
 
 const PUBLIC_DIR = path.join(process.env["OFFICECODE_ROOT"] ?? path.resolve(__dirname, "..", "..", ".."), "dashboard", "public");
 
@@ -39,7 +41,7 @@ function validTool(value: unknown): value is ActiveTool {
   return (["id", "name", "activity", "detail"] as const).every((key) => typeof tool[key] === "string" && (tool[key] as string).length <= 200);
 }
 
-export async function startServer(workspaceDir: string, port: number, options: { lease?: LeaseOptions } = {}): Promise<{
+export async function startServer(workspaceDir: string, port: number, options: { lease?: LeaseOptions; projectsRoot?: string } = {}): Promise<{
   server: http.Server;
   close: () => Promise<void>;
 }> {
@@ -53,6 +55,7 @@ export async function startServer(workspaceDir: string, port: number, options: {
   let leaseTimer: NodeJS.Timeout | undefined;
   let closing = false;
   let lastEventAt: string | null = null;
+  let discovering: Promise<ProjectDashboard[]> | undefined;
 
   const sweepLeases = () => {
     if (!leaseManaged || closing) return;
@@ -81,6 +84,22 @@ export async function startServer(workspaceDir: string, port: number, options: {
 
   const server = http.createServer((req, res) => {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
+    if (req.method === "GET" && url.pathname === "/api/projects") {
+      const address = server.address() as import("node:net").AddressInfo;
+      const workspace = path.resolve(workspaceDir);
+      const current = { name: path.basename(workspace) || workspace, workspace, url: `http://127.0.0.1:${address.port}`, current: true };
+      discovering ??= discoverProjects(options.projectsRoot ?? defaultProjectsRoot(), current).finally(() => { discovering = undefined; });
+      void discovering.then(async projects => {
+        const requested = url.searchParams.get("verify");
+        if (requested !== null) {
+          const target = projects.find(project => !project.current && project.url === requested);
+          const verified = !!target && await verifyProject(target);
+          if (!res.destroyed) sendJson(res, 200, { projects: target && !verified ? projects.filter(project => project !== target) : projects, verified });
+        } else if (!res.destroyed) sendJson(res, 200, { projects });
+      })
+        .catch(() => { if (!res.destroyed) sendJson(res, 200, { projects: [current] }); });
+      return;
+    }
     if (req.method === "GET" && url.pathname === "/api/health") {
       sendJson(res, 200, { ok: true, version: 1, service: "officecode", workspace: path.resolve(workspaceDir), mirrorOnly: process.env["OFFICECODE_MIRROR_ONLY"] === "1", leaseManaged, pid: process.pid,
         activeLeases: [...leases.values()].filter((seen) => Date.now() - seen <= leaseOptions.ttlMs).length, lastEventAt });

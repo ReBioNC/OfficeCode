@@ -19,6 +19,7 @@ import { loadPreferences, savePreferences, normalizePreferences, chosenPeriod, m
 import { taskSummary } from "./task-summary";
 import { featureRoot, featureMembers } from "./feature-focus";
 import { downloadStudioPng, photoFilename } from "./photo-export";
+import { attachProjectSwitcher } from "./project-switcher";
 import { completionTransfers, transferPoint, type TransferSeed } from "./result-transfers";
 import { studioRooms, roomAt, roomResidents, hitComputer } from "./studio-interactions";
 import { STUDIO_DOORS, STUDIO_WIDTH, STUDIO_BASE_HEIGHT, STUDIO_ENTRY, STUDIO_OBSTACLES } from "./studio-map";
@@ -1212,6 +1213,7 @@ function connect(): void {
   source.onerror = () => { streamReady = false; renderConnection(); void snapshot(); };
 }
 
+attachProjectSwitcher();
 applyPreferences(false);
 window.setInterval(() => {
   if (document.visibilityState === "visible" && updateStudioClock()) draw();
