@@ -6,6 +6,8 @@ dashboard/public/
 coverage/
 .nyc_output/
 *.tsbuildinfo
+__pycache__/
+*.py[cod]
 
 # Runtime state and generated deliverables
 .officecode/

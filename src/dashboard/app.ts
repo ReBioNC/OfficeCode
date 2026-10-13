@@ -450,14 +450,14 @@ function renderAttention(connectionIssue?: string): void {
   section.hidden = count === 0;
   const list = document.getElementById("attentionList") as HTMLElement;
   const nodes: HTMLElement[] = [];
-  if (connectionIssue) nodes.push(element("li", "attention-item", `${connectionIssue}. Displayed activity may be stale. Check OpenCode and the dashboard URL; this view reconnects automatically.`));
+  if (connectionIssue) nodes.push(element("li", "attention-item", `${connectionIssue}. Displayed activity may be stale. Check your agent app and the dashboard URL; this view reconnects automatically.`));
   for (const run of warnings) {
     const warning = attentionFor(run)!;
     const item = element("li", "attention-item");
     const choose = element("button", "inspect-button", `! ${warning.label} · ${displayWorkRole(run, false)}`);
     choose.type = "button"; choose.dataset.focusKey = `attention:${run.id}`;
     choose.onclick = () => selectAgent(run.id);
-    item.append(choose, element("p", "", warning.detail), element("span", "team-parent", "Handle permissions and errors in OpenCode."));
+    item.append(choose, element("p", "", warning.detail), element("span", "team-parent", "Handle permissions and errors in your agent app."));
     nodes.push(item);
   }
   list.replaceChildren(...nodes);
@@ -546,18 +546,18 @@ function renderPanels(): void {
   (document.getElementById("activityTracker") as HTMLElement).hidden = !mirrorOnly;
   if (mirrorOnly) {
     (document.getElementById("focusStation") as HTMLElement).textContent = focus ? activityOf(focus).station : "Standby";
-    (document.getElementById("focusRole") as HTMLElement).textContent = focus ? `Agent ${roleFor(focus)} · ${activityOf(focus).persona}` : "OpenCode agent";
+    (document.getElementById("focusRole") as HTMLElement).textContent = focus ? `Agent ${roleFor(focus)} · ${activityOf(focus).persona}` : "Connected agent";
     if (focus) {
       const source = resolveWorkRole(focus, sessions.length === 1 && sessions[0]?.id === focus.id).source;
       (document.getElementById("focusRole") as HTMLElement).textContent += source === "inferred" ? " · inferred role" : source === "single-agent" ? " · single-agent role" : "";
     }
     (document.getElementById("focusTask") as HTMLElement).textContent = focus?.prompt || (selectedRoomId ? "No agents in this room" : "Waiting for a session");
     (document.getElementById("focusActivity") as HTMLElement).textContent = focus ? activityOf(focus).label : "No activity yet";
-    (document.getElementById("focusDetail") as HTMLElement).textContent = focus?.detail || "Start working on a feature in OpenCode.";
+    (document.getElementById("focusDetail") as HTMLElement).textContent = focus?.detail || "Start working on a feature in your agent app.";
     const warning = focus ? attentionFor(focus) : undefined;
     const focusAttention = document.getElementById("focusAttention") as HTMLElement;
     focusAttention.hidden = !warning;
-    focusAttention.textContent = warning ? `${warning.label}: ${warning.detail} Handle this in OpenCode.` : "";
+    focusAttention.textContent = warning ? `${warning.label}: ${warning.detail} Handle this in your agent app.` : "";
     const tools = document.getElementById("activeTools") as HTMLElement;
     tools.replaceChildren(...(focus?.activeTools ?? []).map((tool) => element("li", "tool-item", `${tool.name} · ${tool.detail}`)));
     tools.hidden = !focus?.activeTools?.length;
@@ -611,7 +611,7 @@ function renderPanels(): void {
     if (mirrorOnly && run.detail) item.append(element("p", "activity-detail", short(run.detail, 100)));
     return item;
   });
-  if (activityNodes.length === 0) activityNodes.push(element("li", "empty", "No activity yet. Start a task in OpenCode."));
+  if (activityNodes.length === 0) activityNodes.push(element("li", "empty", "No activity yet. Start a task in your agent app."));
   runsUl.replaceChildren(...activityNodes);
 
   queueUl.replaceChildren(...queue.map((entry) => {
@@ -1138,7 +1138,7 @@ function drawSessionFloor(tick: number, now: number): void {
     drawStudioDoors(now);
     renderRoomInspector(true);
     plate("STUDIO STANDBY", 1080, 974, "#f8be6a");
-    textOnCanvas("Start a task in OpenCode.", 1080, 1010, theme.ui.ink, 12);
+    textOnCanvas("Start a task in your agent app.", 1080, 1010, theme.ui.ink, 12);
     return;
   }
   drawStudioDoors(now);
@@ -1162,7 +1162,7 @@ function drawSessionFloor(tick: number, now: number): void {
   if (photoMode) return;
   ctx.fillStyle = "#1b1d3b"; ctx.fillRect(42, canvas.height - 27, canvas.width - 84, 16);
   ctx.fillStyle = activityOf(primary).color; ctx.fillRect(42, canvas.height - 27, 5, 16);
-  textOnCanvas(short(primary.prompt || "OpenCode session", 47), 54, canvas.height - 25, COLORS.light, 11);
+  textOnCanvas(short(primary.prompt || "Agent session", 47), 54, canvas.height - 25, COLORS.light, 11);
   const activeCount = sessions.filter((run) => run.state !== "done" && run.state !== "blocked").length;
   textOnCanvas(`${activeCount} ACTIVE ${activeCount === 1 ? "AGENT" : "AGENTS"}`, canvas.width - 200, canvas.height - 25, COLORS.light, 11);
 }

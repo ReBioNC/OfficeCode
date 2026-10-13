@@ -4,10 +4,10 @@ type AttentionRun = WorkflowRun & { timeline?: ActivityStep[] };
 export interface AgentAttention { kind: "permission" | "stopped" | "tool-error"; label: string; detail: string; icon: string }
 export function attentionFor(run: AttentionRun): AgentAttention | undefined {
   if (run.state === "done") return undefined;
-  if (run.state === "waiting-approval" || run.activity === "approval") return { kind: "permission", label: "Permission needed", detail: run.detail || "Respond to the permission request in OpenCode.", icon: "!" };
-  if (run.state === "blocked") return { kind: "stopped", label: "Agent stopped", detail: run.detail || "Inspect the session in OpenCode for the cause.", icon: "!" };
+  if (run.state === "waiting-approval" || run.activity === "approval") return { kind: "permission", label: "Permission needed", detail: run.detail || "Respond to the permission request in your agent app.", icon: "!" };
+  if (run.state === "blocked") return { kind: "stopped", label: "Agent stopped", detail: run.detail || "Inspect the session in your agent app for the cause.", icon: "!" };
   const result = [...(run.timeline ?? [])].reverse().find(step => step.outcome);
-  if (result?.outcome === "error") return { kind: "tool-error", label: "Tool failed", detail: result.detail || "A tool reported an error. Check its output in OpenCode.", icon: "!" };
+  if (result?.outcome === "error") return { kind: "tool-error", label: "Tool failed", detail: result.detail || "A tool reported an error. Check its output in your agent app.", icon: "!" };
   return undefined;
 }
 export function attentionRuns<T extends AttentionRun>(runs: readonly T[]): T[] {

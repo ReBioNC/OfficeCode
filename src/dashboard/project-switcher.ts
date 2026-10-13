@@ -67,7 +67,7 @@ export function attachProjectSwitcher(): void {
     const task: Promise<Result> = (async () => {
       const route = verifyUrl ? `/api/projects?verify=${encodeURIComponent(verifyUrl)}` : "/api/projects";
       const response = await fetch(route, { cache: "no-store", signal: AbortSignal.timeout(5000) });
-      if (!response.ok) throw new Error(response.status === 404 ? "Project switcher needs a server restart. Reopen OpenCode." : "Project list unavailable. Retry.");
+      if (!response.ok) throw new Error(response.status === 404 ? "Project switcher needs a server restart. Reopen your agent app." : "Project list unavailable. Retry.");
       const data = await response.json();
       if (!Array.isArray(data?.projects)) throw new Error("Project list unavailable. Retry.");
       const result = { projects: projectRows(data, window.location.origin), verified: data.verified === true };
