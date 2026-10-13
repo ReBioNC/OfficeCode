@@ -1,6 +1,6 @@
 # OfficeCode guide
 
-OfficeCode shows [OpenCode](https://opencode.ai/) session activity as a pixel-art office in your browser. Its global plugin mirrors sessions, tool activity, and permission requests to a local dashboard. **OpenCode still selects and runs every model**; the dashboard does not run models on its own.
+OfficeCode shows [OpenCode](https://opencode.ai/) and [Hermes Agent Desktop](https://hermes-agent.nousresearch.com/) activity as a pixel-art office in your browser. Its adapters mirror sessions, tools, and permission requests to a local dashboard. **Your agent app selects and runs every model**; the dashboard does not run models on its own. The OpenCode instructions below remain specific to OpenCode; see the Hermes section for Desktop setup.
 
 ## Preview
 
@@ -346,3 +346,30 @@ Focus feature highlights the selected agent's main run and recorded descendant t
 Photo mode fits the full studio preview and hides normal controls, the activity panel and crew. Choose a temporary theme and Roles only / Activity and roles / Hide agent labels, then Export PNG. Default roles-only mode omits activity bubbles and the task title band; activity labels can include filenames. PNG contains the whole studio at its current horizontal aspect, with no toolbar or viewport crop. Exports are limited to 8192 pixels per dimension and 16 million pixels, scaling large floors uniformly. Download stays local. Exit photo mode or Escape restores the UI/theme and previous camera in the same layout/breakpoint; underlying OpenCode sessions keep running.
 
 Project dashboard switches this browser tab to another active OpenCode project. Open OpenCode in each project first; servers keep their independent workspaces, sessions and lifetimes. The dropdown refreshes every five seconds while visible (pauses while choosing) and rechecks the destination before navigation. Same-name folders use a short unique parent path; the control title exposes the full workspace path. The refresh button updates manually. Closed/stale/wrong-workspace/redirected registrations are ignored. Discovery reads only existing local plugin connection records and loopback health, with bounded concurrency and response size, and makes no model calls. An old server without /api/projects shows a restart message; reopen OpenCode and hard-refresh the browser after updating. The current dashboard remains available in preview mode even though other listed projects require live OpenCode connections.
+
+## Hermes Agent Desktop
+
+Install the native observer adapter from a permanent OfficeCode checkout:
+
+```bash
+npm ci
+npm run install:hermes
+```
+
+Node.js 18+ and the `hermes` CLI must be available. The installer saves `__init__.py`, `plugin.yaml`, and a checkout/Node-path registration under `<HERMES_HOME>/plugins/officecode/`, then uses `hermes plugins enable officecode` to preserve Hermes's other settings and enabled plugins. Existing managed files get `.bak` backups when their content changes. `--no-enable` installs files only: `node scripts/install-hermes.cjs --no-enable` after building. Set `OFFICECODE_HERMES_CLI` to the Hermes executable if it is not on PATH.
+
+The active `HERMES_HOME` takes priority. Without it, the installer follows local Desktop defaults: `%LOCALAPPDATA%\hermes` on Windows (an existing legacy `~/.hermes` is retained if the Desktop directory is absent), `~/.hermes` on macOS/Linux. If Desktop uses another profile, set `HERMES_HOME` to that profile's directory before installing; repeat for each profile you want to monitor.
+
+Quit and reopen Hermes Desktop so its local backend reloads plugins. Send a task, then run `/office-dashboard` and open the returned URL. This command performs only a bounded local health read; it does not start a model, task, or server. `/dashboard` remains the OpenCode command and is not overridden in Hermes. No Desktop source files or provider credentials are modified.
+
+### Events and lifecycle
+
+The Python plugin uses Hermes's public `register_hook`/`register_command` APIs. Registration is inert. The first observed task starts a background pipe to a Node connector, which discovers or starts a loopback-only mirror sidecar and holds a lease while the local Hermes backend lives. EOF, process exit, or loss of the connector expires/releases that lease; the sidecar stops after its final owner disconnects. Quitting the local Windows Desktop stops its managed backends. Hiding/minimizing the app is not quitting it; a gateway you run separately can remain alive. Remote gateway access/embedded Desktop panes are not part of this local integration.
+
+Hermes observer payloads in the tested installation do not carry the Desktop workspace folder. A dashboard therefore groups sessions by **Hermes profile**, rather than guessing a project from tool arguments. Namespaced session IDs avoid collisions with OpenCode, and Project dashboard lists active profiles alongside registered OpenCode projects. Profiles keep separate state and leases. No model is started by the dashboard, and `POST /api/runs` remains disabled.
+
+Turn/API hooks animate thinking; tool hooks show reading, editing, web/code search, terminal/testing, and delegation. Concurrent tools stay visible until each finishes. Approval hooks correlate through the native turn ID. `on_session_end` provides the authoritative outcome for both foreground and background children, including cancellation/incomplete runs; completion removes their characters while retaining observed workflow history. Compression-driven session ID changes are correlated through `turn_id`. A single generic Hermes agent shows **Fullstack**; explicit child roles/custom names take priority. Raw tool arguments, responses, output, and credentials are never sent to OfficeCode. Optional dashboard failures return no context or policy directives to Hermes.
+
+Update from a clean checkout with `git pull --ff-only`, `npm ci`, and `npm run install:hermes`, then quit/reopen Desktop and hard-refresh the browser. Disable with `hermes plugins disable officecode` and restart Desktop; remove with `hermes plugins remove officecode`. These commands target the active `HERMES_HOME` profile.
+
+Compatibility was verified against the installed Hermes backend's public plugin loader (package version 0.16.0) and Desktop source 0.15.1. Native hook fixtures, sidecar lifecycle/recovery, and browser studio rendering are tested without calling a model. End-user provider execution remains managed by Hermes. Developing/testing the Hermes adapter also requires Python 3.11+ (`OFFICECODE_PYTHON` selects the test interpreter).
