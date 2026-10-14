@@ -11,6 +11,9 @@ export interface RunRecord {
   id: string;
   deskId: string;
   role: string;
+  agent?: string;
+  runtime?: "opencode" | "hermes";
+  workspace?: string;
   prompt: string;
   state: RunState;
   sessionId?: string;
@@ -56,9 +59,7 @@ export function listRuns(): RunRecord[] {
   return [...runs.values()];
 }
 
-// --- Mirror: external opencode sessions projected as characters ---
-// Every state here comes from a real opencode event forwarded by the
-// project plugin. Nothing is simulated.
+// Mirror states come from real host events forwarded by their adapters.
 
 const mirrorBySession = new Map<string, string>();
 
@@ -85,13 +86,16 @@ function notFound(sessionId: string): Error & { code: number } {
 export async function registerMirrorRun(
   store: OfficeStore,
   workspaceDir: string,
-  input: { sessionId: string; role: string; prompt: string; parentSessionId?: string },
+  input: { sessionId: string; role?: string; prompt?: string; parentSessionId?: string; runtime?: "opencode" | "hermes"; workspace?: string; agent?: string },
 ): Promise<RunRecord> {
   const existing = getMirrorRun(input.sessionId);
   if (existing) {
     if (input.prompt && input.prompt !== "OpenCode session") existing.prompt = input.prompt.slice(0, 200);
     if (input.role && input.role !== "opencode") existing.role = input.role.slice(0, 48);
     if (input.parentSessionId) existing.parentSessionId = input.parentSessionId;
+    if (input.runtime !== undefined) existing.runtime = input.runtime;
+    if (input.workspace !== undefined) existing.workspace = input.workspace;
+    if (input.agent !== undefined) existing.agent = input.agent;
     notifyRun(existing);
     return existing;
   }
@@ -104,6 +108,9 @@ export async function registerMirrorRun(
     id,
     deskId,
     role: input.role || "opencode",
+    agent: input.agent,
+    runtime: input.runtime,
+    workspace: input.workspace,
     prompt: input.prompt || "opencode session",
     state: "walking",
     sessionId: input.sessionId,

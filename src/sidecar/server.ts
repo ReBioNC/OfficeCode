@@ -50,6 +50,7 @@ export async function startServer(workspaceDir: string, port: number, options: {
   const leaseManaged = options.lease !== undefined || process.env["OFFICECODE_LEASED"] === "1";
   const leaseOptions = options.lease ?? { ttlMs: 7_000, startupGraceMs: 12_000, emptyGraceMs: 500 };
   const leases = new Map<string, number>();
+  const sessionOwners = new Map<string, string>();
   let emptySince: number | null = Date.now();
   let hadLease = false;
   let leaseTimer: NodeJS.Timeout | undefined;
@@ -57,10 +58,17 @@ export async function startServer(workspaceDir: string, port: number, options: {
   let lastEventAt: string | null = null;
   let discovering: Promise<ProjectDashboard[]> | undefined;
 
+  const releaseOwner = (id: string) => {
+    leases.delete(id);
+    for (const [sid, owner] of sessionOwners) if (owner === id) {
+      sessionOwners.delete(sid);
+      void finishMirrorRun(store, sid, "blocked", "Agent connection closed").catch(() => {});
+    }
+  };
   const sweepLeases = () => {
     if (!leaseManaged || closing) return;
     const now = Date.now();
-    for (const [id, lastSeen] of leases) if (now - lastSeen > leaseOptions.ttlMs) leases.delete(id);
+    for (const [id, lastSeen] of leases) if (now - lastSeen > leaseOptions.ttlMs) releaseOwner(id);
     if (leases.size > 0) { emptySince = null; return; }
     emptySince ??= now;
     const grace = hadLease ? leaseOptions.emptyGraceMs : leaseOptions.startupGraceMs;
@@ -116,15 +124,18 @@ export async function startServer(workspaceDir: string, port: number, options: {
             sendJson(res, 400, { error: "invalid lease id" });
             return;
           }
+          const previousSeen = leases.get(input.id);
+          const created = req.method === "POST" && (previousSeen === undefined || Date.now() - previousSeen > leaseOptions.ttlMs);
           if (req.method === "POST") {
+            if (created && previousSeen !== undefined) releaseOwner(input.id);
             leases.set(input.id, Date.now());
             hadLease = true;
             emptySince = null;
           } else {
-            leases.delete(input.id);
+            releaseOwner(input.id);
             if (leases.size === 0) emptySince = Date.now();
           }
-          sendJson(res, 200, { ok: true, activeLeases: leases.size });
+          sendJson(res, 200, { ok: true, activeLeases: leases.size, ...(req.method === "POST" ? { created } : {}) });
         } catch {
           sendJson(res, 400, { error: "invalid JSON body" });
         }
@@ -257,7 +268,7 @@ export async function startServer(workspaceDir: string, port: number, options: {
       });
       return;
     }
-    // Mirror: external opencode sessions projected as characters.
+    // Mirror: external runtime sessions projected as characters.
     if ((req.method === "POST" && url.pathname === "/api/mirror/session") ||
         (req.method === "POST" && url.pathname === "/api/mirror/event") ||
         (req.method === "POST" && url.pathname === "/api/mirror/finish")) {
@@ -268,6 +279,8 @@ export async function startServer(workspaceDir: string, port: number, options: {
           try {
             const input = JSON.parse(body) as {
               sessionId?: string; role?: string; prompt?: string; parentSessionId?: string;
+              runtime?: "opencode" | "hermes"; workspace?: string; agent?: string;
+              ownerLeaseId?: string;
               state?: string; message?: string; outcome?: string; activity?: string; detail?: string;
               activeTools?: ActiveTool[]; toolResult?: ToolResult;
             };
@@ -276,15 +289,41 @@ export async function startServer(workspaceDir: string, port: number, options: {
               return;
             }
             if (url.pathname === "/api/mirror/session") {
+              if (input.ownerLeaseId !== undefined) {
+                if (typeof input.ownerLeaseId !== "string" || !/^[a-f0-9]{32}$/.test(input.ownerLeaseId)) {
+                  sendJson(res, 400, { error: "invalid ownerLeaseId" }); return;
+                }
+                const seen = leases.get(input.ownerLeaseId);
+                if (seen === undefined || Date.now() - seen > leaseOptions.ttlMs) {
+                  sendJson(res, 409, { error: "owner lease is not active" }); return;
+                }
+                const owner = sessionOwners.get(input.sessionId);
+                if (owner && owner !== input.ownerLeaseId) {
+                  sendJson(res, 409, { error: "session belongs to another connection" }); return;
+                }
+              }
+              if (input.runtime !== undefined && input.runtime !== "opencode" && input.runtime !== "hermes") {
+                sendJson(res, 400, { error: "runtime must be opencode or hermes" }); return;
+              }
+              for (const [name, value, limit] of [["workspace", input.workspace, 4096], ["agent", input.agent, 48], ["role", input.role, 48]] as const) {
+                if (value !== undefined && (typeof value !== "string" || !value.trim() || value.length > limit)) {
+                  sendJson(res, 400, { error: `invalid ${name}` }); return;
+                }
+              }
               if (input.parentSessionId !== undefined && (typeof input.parentSessionId !== "string" || input.parentSessionId.length > 200 || input.parentSessionId === input.sessionId)) {
                 sendJson(res, 400, { error: "invalid parentSessionId" }); return;
               }
-              const run = await registerMirrorRun(store, workspaceDir, {
+              const registration = registerMirrorRun(store, workspaceDir, {
                 sessionId: input.sessionId,
-                role: input.role ?? "opencode",
-                prompt: input.prompt ?? "opencode session",
+                role: input.role,
+                prompt: input.prompt,
                 parentSessionId: input.parentSessionId,
+                runtime: input.runtime,
+                workspace: input.workspace,
+                agent: input.agent,
               });
+              if (input.ownerLeaseId) sessionOwners.set(input.sessionId, input.ownerLeaseId);
+              const run = await registration;
               broadcast({ runId: run.id, state: run.state });
               sendJson(res, 201, { run });
               return;
@@ -320,6 +359,7 @@ export async function startServer(workspaceDir: string, port: number, options: {
               return;
             }
             const run = await finishMirrorRun(store, input.sessionId, input.outcome, input.message);
+            sessionOwners.delete(input.sessionId);
             broadcast({ runId: run.id, state: run.state });
             sendJson(res, 200, { run });
           } catch (err) {

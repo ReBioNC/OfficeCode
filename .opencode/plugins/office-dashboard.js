@@ -150,6 +150,7 @@ async function toast(client, message) {
 }
 
 export const OfficeDashboardPlugin = async ({ client, directory }) => {
+  if (process.env.OFFICECODE_MIRROR_DISABLED === "1") return {};
   const workspace = path.resolve(directory || process.cwd());
   const registrations = globalThis[Symbol.for("officecode.plugin.registrations")] ??= new Set();
   if (registrations.has(workspace)) return {};
@@ -167,6 +168,9 @@ export const OfficeDashboardPlugin = async ({ client, directory }) => {
 
   async function publishActivity(sid, extra = {}) {
     if (!sid || !activeSessions.has(sid)) return;
+    if (typeof extra.role === "string" && extra.role.trim()) {
+      await post(await ensure(), "/api/mirror/session", { sessionId: sid, role: extra.role.slice(0, 48), agent: extra.role.slice(0, 48), runtime: "opencode", workspace, ownerLeaseId: leaseId });
+    }
     const tools = [...(sessionTools.get(sid)?.values() ?? [])];
     const latest = tools[tools.length - 1];
     const waiting = awaitingPermission.has(sid);
@@ -218,7 +222,7 @@ export const OfficeDashboardPlugin = async ({ client, directory }) => {
 
   async function beginSession(sid, prompt = "OpenCode session") {
     if (!sid || activeSessions.has(sid)) return;
-    if (await post(await ensure(), "/api/mirror/session", { sessionId: sid, role: "opencode", prompt, parentSessionId: sessionParents.get(sid) })) activeSessions.add(sid);
+    if (await post(await ensure(), "/api/mirror/session", { sessionId: sid, role: "opencode", prompt, parentSessionId: sessionParents.get(sid), runtime: "opencode", agent: "opencode", workspace, ownerLeaseId: leaseId })) activeSessions.add(sid);
   }
 
   // The headless server may never emit server.connected. Start when OpenCode loads the plugin.
@@ -228,11 +232,13 @@ export const OfficeDashboardPlugin = async ({ client, directory }) => {
     dispose: async () => {
       disposed = true;
       if (heartbeat) clearInterval(heartbeat);
+      await Promise.allSettled([...sessionTasks.values()]);
       if (pending) await pending.catch(() => {});
       const lastUrl = url;
       url = null;
       registrations.delete(workspace);
       if (lastUrl) await updateLease(lastUrl, leaseId, "DELETE");
+      activeSessions.clear();
       sessionTools.clear(); awaitingPermission.clear(); sessionParents.clear();
     },
     event: async ({ event }) => {
@@ -340,6 +346,7 @@ export const OfficeDashboardPlugin = async ({ client, directory }) => {
   for (const name of ["event", "chat.message", "tool.execute.before", "tool.execute.after", "permission.ask"]) {
     const handle = hooks[name];
     hooks[name] = (...args) => {
+      if (disposed) return Promise.resolve();
       const payload = name === "event" ? args[0]?.event : args[0];
       const sid = payload?.properties?.info?.sessionID ?? sessionIdOf(payload);
       if (!sid) return handle(...args);
@@ -353,3 +360,97 @@ export const OfficeDashboardPlugin = async ({ client, directory }) => {
   }
   return hooks;
 };
+
+function sameDirectory(a, b) {
+  const left = path.resolve(a), right = path.resolve(b);
+  return process.platform === "win32" ? left.toLowerCase() === right.toLowerCase() : left === right;
+}
+
+// OpenCode 2.x requires `export default { id, setup }` and streams `{ type, data }`
+// events through ctx.event.subscribe. Translate them into the hooks above.
+async function setup(ctx) {
+  // OpenCode 1.x may call setup without an event stream; its named export serves 1.x.
+  if (typeof ctx?.event?.subscribe !== "function") return;
+  const location = ctx.location?.directory ?? ctx.location?.project?.directory;
+  const directory = typeof location === "string" && location ? location : undefined;
+  const hooks = await OfficeDashboardPlugin({ directory });
+  if (typeof hooks.event !== "function") return; // disabled or already registered for this workspace
+  const workspace = path.resolve(directory || process.cwd());
+  const agents = new Map();
+  const toolNames = new Map();
+  const foreign = new Set();
+  const event = (type, properties) => hooks.event({ event: { type, properties } });
+
+  async function translate(e) {
+    const data = e?.data ?? e?.properties;
+    const sid = typeof data?.sessionID === "string" ? data.sessionID : null;
+    if (!sid || typeof e.type !== "string") return;
+    // OpenCode 2.x runs one setup per project location; skip other projects' events.
+    const scope = e.location?.directory;
+    if (typeof scope === "string" && !sameDirectory(scope, workspace)) return;
+    if (e.type === "session.created") {
+      const dir = data.location?.directory;
+      if (typeof dir === "string" && !sameDirectory(dir, workspace)) { foreign.add(sid); return; }
+      if (typeof data.agent === "string") agents.set(sid, data.agent);
+      await event("session.created", { sessionID: sid, info: { id: sid, parentID: data.parentID, title: data.title ?? "OpenCode session" } });
+      return;
+    }
+    if (foreign.has(sid)) {
+      if (e.type === "session.deleted") foreign.delete(sid);
+      return;
+    }
+    const key = `${sid}:${data.id}`;
+    switch (e.type) {
+      case "session.renamed":
+        await event("session.updated", { sessionID: sid, info: { id: sid, title: data.title } });
+        break;
+      case "session.agent.selected":
+        if (typeof data.agent === "string") agents.set(sid, data.agent);
+        break;
+      case "session.execution.started":
+        await hooks["chat.message"]({ sessionID: sid, agent: agents.get(sid) });
+        break;
+      case "session.execution.succeeded":
+      case "session.execution.interrupted":
+        await event("session.idle", { sessionID: sid });
+        break;
+      case "session.execution.failed":
+        await event("session.error", { sessionID: sid });
+        break;
+      case "session.deleted":
+        agents.delete(sid);
+        await event("session.deleted", { sessionID: sid });
+        break;
+      case "session.tool.input.started":
+        if (typeof data.name === "string") toolNames.set(key, data.name);
+        break;
+      case "session.tool.called":
+        await hooks["tool.execute.before"]({ sessionID: sid, callID: data.id, tool: data.name ?? toolNames.get(key) ?? "tool" }, { args: data.input });
+        break;
+      case "session.tool.success":
+      case "session.tool.failed":
+        toolNames.delete(key);
+        await hooks["tool.execute.after"]({ sessionID: sid, callID: data.id }, { metadata: e.type === "session.tool.failed" ? { error: true } : {} });
+        break;
+      case "permission.asked":
+        await hooks["permission.ask"]({ sessionID: sid });
+        break;
+      case "permission.replied":
+        await event("permission.replied", { sessionID: sid });
+        break;
+    }
+  }
+
+  let subscription = null;
+  try {
+    subscription = await ctx.event.subscribe(async (e) => {
+      try { await translate(e); } catch { /* dashboard must never interrupt OpenCode */ }
+    });
+  } catch { /* still keep the dashboard lease */ }
+  return async () => {
+    try { await subscription?.dispose?.(); } catch { /* host is shutting down */ }
+    await hooks.dispose();
+  };
+}
+
+export default { id: "officecode.dashboard", server: OfficeDashboardPlugin, setup };

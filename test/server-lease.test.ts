@@ -32,6 +32,33 @@ async function waitClosed(url: string, timeoutMs = 3000) {
 }
 
 describe("managed sidecar lifetime", () => {
+  for (const mode of ["release", "expire"] as const) it(`finishes only disconnected owner's characters on ${mode} in a shared studio`, async () => {
+    const server = await managedServer();
+    const first = "d".repeat(32), second = "e".repeat(32);
+    const post = (route: string, body: unknown) => fetch(server.url + route, {method: "POST", headers: {"content-type":"application/json"}, body:JSON.stringify(body)});
+    try {
+      await lease(server.url, "POST", first); await lease(server.url, "POST", second);
+      const sid = `owner-${mode}`, other = `survivor-${mode}`;
+      assert.equal((await post('/api/mirror/session', {sessionId:sid,ownerLeaseId:first})).status, 201);
+      assert.equal((await post('/api/mirror/session', {sessionId:other,ownerLeaseId:second})).status, 201);
+      assert.equal((await post('/api/mirror/session', {sessionId:sid,ownerLeaseId:second})).status, 409);
+      assert.equal((await post('/api/mirror/session', {sessionId:'bad',ownerLeaseId:'invalid'})).status, 400);
+      if (mode === 'release') await lease(server.url, "DELETE", first);
+      else for (let n=0; n<7; n++) {
+        await lease(server.url, "POST", second);
+        await new Promise(resolve => setTimeout(resolve,100));
+      }
+      const runs = (await (await fetch(server.url+'/api/runs')).json()).runs;
+      assert.equal(runs.find((r: any) => r.sessionId === sid).state, 'blocked');
+      assert.equal(runs.find((r: any) => r.sessionId === other).state, 'walking');
+      const occupants = (await (await fetch(server.url+'/api/office')).json()).occupants;
+      assert.equal(Object.keys(occupants).length, 1);
+      assert.equal((await post('/api/mirror/session', {sessionId:sid,ownerLeaseId:first})).status, 409);
+      assert.equal((await (await lease(server.url, "POST", second)).json()).created, false);
+      assert.equal((await (await lease(server.url, "POST", first)).json()).created, true);
+      assert.equal((await post('/api/mirror/session', {sessionId:sid,ownerLeaseId:first})).status, 201);
+    } finally { if (server.server.listening) await server.close(); }
+  });
   it("stays online while another OpenCode instance holds a lease", async () => {
     const server = await managedServer();
     const first = "a".repeat(32);

@@ -4,6 +4,9 @@ import json
 import os
 from pathlib import Path
 import tempfile
+import shutil
+import subprocess
+import threading
 import unittest
 from unittest.mock import patch
 
@@ -88,12 +91,98 @@ class HermesObserverTests(unittest.TestCase):
                 self.hooks[name] = callback
             def register_command(self, name, callback, **kwargs):
                 self.commands[name] = callback
+            def register_tool(self, **kwargs):
+                self.tool = kwargs
         ctx = Context()
         self.module.register(ctx)
         self.assertIn("subagent_start", ctx.hooks)
         self.assertIn("office-dashboard", ctx.commands)
+        self.assertEqual(ctx.tool["name"], "officecode_delegate_opencode")
         self.assertIsNone(ctx.hooks["pre_tool_call"](session_id=None, tool_name="read_file", args={}, future_field=True))
         self.assertIn("not running", ctx.commands["office-dashboard"](""))
+
+    def test_native_delegation_requires_verified_parent_and_explicit_workspace(self):
+        delegation = self.module.make_delegator(self.observer, self.module.Channel())
+        missing = json.loads(delegation({"prompt": "Work", "workspace": os.environ["HERMES_HOME"]}, session_id="unknown"))
+        self.assertEqual(missing["error"], "parent-session-unavailable")
+        self.invoke("pre_llm_call", session_id="parent", turn_id="turn", user_message="Work")
+        invalid = json.loads(delegation({"prompt": "Work", "workspace": "relative-folder"}, session_id="parent"))
+        self.assertEqual(invalid["error"], "invalid-workspace")
+
+    def test_native_delegation_runs_worker_with_trusted_compressed_parent(self):
+        self.invoke("pre_llm_call", session_id="original", turn_id="turn", user_message="Feature")
+        self.invoke("pre_api_request", session_id="compressed", turn_id="turn")
+        root = Path(os.environ["HERMES_HOME"])
+        (root / "scripts").mkdir()
+        fake = root / "fake-opencode.cjs"
+        fake.write_text("""process.stdin.resume(); process.stdin.on('end',()=>{
+console.log(JSON.stringify({type:'step_start',sessionID:'real-fixture-id'}));
+console.log(JSON.stringify({type:'tool_use',sessionID:'real-fixture-id',part:{tool:'read',callID:'read',state:{status:'completed',input:{filePath:'private/app.ts'},output:'SECRET_OUTPUT'}}}));
+console.log(JSON.stringify({type:'text',sessionID:'real-fixture-id',part:{text:'DELEGATION_OK'}}));
+console.log(JSON.stringify({type:'step_finish',sessionID:'real-fixture-id',part:{reason:'stop'}}));
+});""", encoding="utf-8")
+        worker = ROOT / "scripts/delegate-opencode.cjs"
+        (root / "scripts/delegate-opencode.cjs").write_text(
+            "require(" + json.dumps(str(worker)) + ").runCli({executable:process.execPath,prefixArgs:[" + json.dumps(str(fake)) + "]});", encoding="utf-8")
+        captured = []
+        class Channel:
+            def emit(self, event):
+                captured.append(event)
+        native = self.module.make_delegator(self.observer, Channel())
+        native.settings = lambda: ({"root": str(root), "node": shutil.which("node")}, root)
+        with patch.dict(os.environ, {"OFFICECODE_ROOT": str(root)}):
+            result = json.loads(native({"prompt": "Implement feature", "workspace": str(root), "role": "frontend-dev"}, session_id="compressed"))
+        self.assertEqual(result["outcome"], "done", result)
+        self.assertIn("DELEGATION_OK", result["result"])
+        self.assertTrue(captured)
+        self.assertTrue(all(event["runtime"] == "opencode" for event in captured))
+        self.assertTrue(all(event["parentSessionId"] == "original" for event in captured))
+        self.assertNotIn("SECRET_OUTPUT", json.dumps(captured))
+        self.assertEqual(len(native.jobs), 0)
+
+    def test_native_interrupt_cancels_silent_worker_on_handler_thread(self):
+        self.invoke("pre_llm_call", session_id="parent", user_message="Work")
+        home = Path(os.environ["HERMES_HOME"])
+        (home / "scripts").mkdir()
+        fake = home / "fake.cjs"
+        fake.write_text("process.stdin.resume(); setInterval(()=>{},1000);", encoding="utf-8")
+        (home / "scripts/delegate-opencode.cjs").write_text(
+            "require(" + json.dumps(str(ROOT / "scripts/delegate-opencode.cjs")) + ").runCli({executable:process.execPath,prefixArgs:[" + json.dumps(str(fake)) + "]});", encoding="utf-8")
+        native = self.module.make_delegator(self.observer, self.module.Channel())
+        native.settings = lambda: ({"root": str(home), "node": shutil.which("node")}, home)
+        original_thread = threading.get_ident()
+        def interrupted():
+            self.assertEqual(threading.get_ident(), original_thread)
+            return True
+        native.is_interrupted = interrupted
+        with patch.dict(os.environ, {"OFFICECODE_ROOT": str(home)}):
+            result = json.loads(native({"prompt": "Work", "workspace": str(home)}, session_id="parent"))
+        self.assertEqual(result["error"], "cancelled")
+        self.assertEqual(len(native.jobs), 0)
+
+    def test_native_delegation_caps_four_jobs(self):
+        self.invoke("pre_llm_call", session_id="parent", user_message="Work")
+        native = self.module.make_delegator(self.observer, self.module.Channel())
+        for _ in range(4):
+            native.capacity.acquire()
+        result = json.loads(native({"prompt": "Work", "workspace": os.environ["HERMES_HOME"]}, session_id="parent"))
+        self.assertEqual(result["error"], "delegation-capacity")
+        for _ in range(4):
+            native.capacity.release()
+
+    def test_native_close_during_settings_prevents_worker_start(self):
+        self.invoke("pre_llm_call", session_id="parent", user_message="Work")
+        native = self.module.make_delegator(self.observer, self.module.Channel())
+        def settings():
+            native.close()
+            return {"root": str(ROOT)}, ROOT
+        native.settings = settings
+        with patch.object(subprocess, "Popen") as spawn:
+            result = json.loads(native({"prompt": "Work", "workspace": os.environ["HERMES_HOME"]}, session_id="parent"))
+        spawn.assert_not_called()
+        self.assertEqual(result["error"], "cancelled")
+        self.assertTrue(native.capacity.acquire(blocking=False))
+        native.capacity.release()
 
     def test_queue_keeps_finish_between_rapid_turns(self):
         channel = self.module.Channel()

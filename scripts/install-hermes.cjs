@@ -11,6 +11,14 @@ const home = path.resolve(process.env.HERMES_HOME || defaultHome);
 const destination = path.join(home, "plugins", "officecode");
 const enable = !process.argv.includes("--no-enable");
 const hermes = process.env.OFFICECODE_HERMES_CLI || "hermes";
+const metadataFile = path.join(destination, "office-dashboard.json");
+let previous = {};
+try { previous = JSON.parse(fs.readFileSync(metadataFile, "utf8")); } catch { /* first install */ }
+const studioFlag = process.argv.indexOf("--studio-workspace");
+const studioWorkspace = studioFlag >= 0 ? process.argv[studioFlag + 1] : previous.studioWorkspace;
+if (studioFlag >= 0 && (!studioWorkspace || !path.isAbsolute(studioWorkspace) || !fs.existsSync(studioWorkspace) || !fs.statSync(studioWorkspace).isDirectory())) {
+  throw new Error("--studio-workspace requires an existing absolute directory.");
+}
 
 for (const file of ["dist/src/sidecar/index.js", "dashboard/public/app.js", "scripts/hermes-bridge.cjs"]) {
   if (!fs.existsSync(path.join(root, file))) throw new Error("Build files are missing. Run npm run build first.");
@@ -28,11 +36,17 @@ function install(file, content) {
   }
   fs.writeFileSync(file, content, "utf8");
 }
-for (const file of ["__init__.py", "plugin.yaml"]) {
+for (const file of ["__init__.py", "delegation.py", "plugin.yaml"]) {
   install(path.join(destination, file), fs.readFileSync(path.join(root, "integrations/hermes", file), "utf8"));
 }
-install(path.join(destination, "office-dashboard.json"), JSON.stringify({ root, node: process.execPath }, null, 2) + "\n");
+install(metadataFile, JSON.stringify({ root, node: process.execPath, ...(studioWorkspace ? { studioWorkspace: path.resolve(studioWorkspace) } : {}) }, null, 2) + "\n");
 if (enable) {
+  const bundledPython = path.join(defaultHome, "hermes-agent", "venv", process.platform === "win32" ? "Scripts/python.exe" : "bin/python");
+  const python = process.env.OFFICECODE_HERMES_PYTHON || (fs.existsSync(bundledPython) ? bundledPython : process.platform === "win32" ? "python" : "python3");
+  const configured = spawnSync(python, ["-B", path.join(root, "scripts/configure-hermes-mcp.py"), home,
+    JSON.stringify({ command: process.execPath, args: [path.join(root, "scripts/hermes-mcp.cjs")], env: { HERMES_HOME: home }, timeout: 15, officecodeManaged: true })],
+    { env: { ...process.env, HERMES_HOME: home }, windowsHide: true, stdio: "inherit", timeout: 30_000 });
+  if (configured.error || configured.status !== 0) throw new Error("MCP configuration failed. Use Hermes's Python environment (with PyYAML), check OFFICECODE_HERMES_PYTHON, and preserve any conflicting MCP entry.");
   // Let Hermes preserve its own profile/config format and enabled-plugin list.
   const result = spawnSync(hermes, ["plugins", "enable", "officecode"], {
     env: { ...process.env, HERMES_HOME: home }, stdio: "inherit", windowsHide: true, timeout: 60_000,
@@ -41,4 +55,4 @@ if (enable) {
 }
 console.log(`Hermes plugin: ${destination}`);
 console.log(enable ? "Plugin enabled in this Hermes profile." : "Files installed. Enable with: hermes plugins enable officecode");
-console.log("Keep this OfficeCode folder. Quit and reopen Hermes Desktop, send a task, then run /office-dashboard.");
+console.log("Keep this OfficeCode folder. Quit and reopen Hermes CLI/Desktop; the studio starts automatically. Run /office-dashboard to see its URL.");

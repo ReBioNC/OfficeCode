@@ -1,6 +1,7 @@
 import { deskPoint, roomRect, type Rect } from "./layout";
 import { displayWorkRole, resolveWorkRole } from "./work-role";
 import { resolveFocus, hitAgent, delegationRows } from "./agent-inspector";
+import { agentProvenance, runtimeLabel } from "./agent-provenance";
 import { stepDuration, type ActivityStep, type ActiveTool } from "../shared/run-history";
 import { attachStudioCamera, type CameraView } from "./studio-camera";
 import { attachPanelLayout } from "./panel-layout";
@@ -36,7 +37,7 @@ interface Room { id: string; name: string; color: string }
 interface Hallway { fromRoomId: string; toRoomId: string; open: boolean }
 interface PlacedObject { id: string; roomId: string; kind: string }
 interface OfficeDoc { building: string; rooms: Room[]; desks: Desk[]; hallways: Hallway[]; objects: PlacedObject[] }
-interface Run { id: string; deskId: string; role: string; state: string; prompt: string; sessionId?: string; parentSessionId?: string; activity?: string; detail?: string; startedAt?: string; finishedAt?: string; timeline?: ActivityStep[]; historyTruncated?: number; activeTools?: ActiveTool[] }
+interface Run { id: string; deskId: string; role: string; state: string; prompt: string; agent?: string; runtime?: "opencode" | "hermes"; workspace?: string; sessionId?: string; parentSessionId?: string; activity?: string; detail?: string; startedAt?: string; finishedAt?: string; timeline?: ActivityStep[]; historyTruncated?: number; activeTools?: ActiveTool[] }
 interface QueueItem { position: number; deskId: string; role: string; prompt: string }
 
 const COLORS = {
@@ -536,8 +537,9 @@ function renderPanels(): void {
     choose.type = "button";
     choose.dataset.focusKey = `team:${run.id}`;
     choose.onclick = () => selectAgent(run.id);
+    choose.prepend(element("span", "runtime-badge", runtimeLabel(run)), document.createTextNode(" "));
     item.append(choose, element("span", "team-parent", run.parentSessionId
-      ? `Delegated by ${parent ? `${displayWorkRole(parent, false)} · ${short(parent.prompt, 32)}` : "parent session (not on this floor)"}`
+      ? `Delegated by ${parent ? `${runtimeLabel(parent)} · ${displayWorkRole(parent, false)} · ${short(parent.prompt, 32)}` : "Unknown runtime · parent session (not on this floor)"}`
       : "Main session"));
     return item;
   }));
@@ -545,6 +547,13 @@ function renderPanels(): void {
   (document.getElementById("focusSection") as HTMLElement).hidden = !mirrorOnly;
   (document.getElementById("activityTracker") as HTMLElement).hidden = !mirrorOnly;
   if (mirrorOnly) {
+    const provenance = agentProvenance(focus, runs);
+    (document.getElementById("focusRuntime") as HTMLElement).textContent = provenance.runtime;
+    (document.getElementById("focusAgent") as HTMLElement).textContent = provenance.agent;
+    (document.getElementById("focusWorkspace") as HTMLElement).textContent = provenance.workspace;
+    (document.getElementById("focusParent") as HTMLElement).textContent = provenance.parent;
+    (document.getElementById("focusElapsed") as HTMLElement).textContent = focus?.startedAt
+      ? stepDuration({ at: focus.startedAt, state: focus.state, activity: focus.activity ?? focus.state, detail: "" }, focus.finishedAt) : "Not provided";
     (document.getElementById("focusStation") as HTMLElement).textContent = focus ? activityOf(focus).station : "Standby";
     (document.getElementById("focusRole") as HTMLElement).textContent = focus ? `Agent ${roleFor(focus)} · ${activityOf(focus).persona}` : "Connected agent";
     if (focus) {
@@ -635,7 +644,7 @@ function renderPanels(): void {
       if (portraitCtx) drawSprite(portraitCtx, avatarFrame(run.sessionId ?? run.id, CHAR_FRAMES.idle), agentPalette(workRole, run.sessionId ?? run.id), 3, 3, 2);
       avatar.append(portrait);
       const copy = element("div", "crew-copy");
-      copy.append(element("span", "crew-name", workRole), element("span", "crew-meta", short(`${run.role} · ${run.prompt}`, 36)),
+      copy.append(element("span", "crew-name", workRole), element("span", "runtime-badge", runtimeLabel(run)), element("span", "crew-meta", short(`${run.agent ?? run.role} · ${run.prompt}`, 36)),
         element("span", "crew-status", activityOf(run).label));
       const choose = element("button", "crew-select");
       choose.type = "button";

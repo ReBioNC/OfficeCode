@@ -4,6 +4,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
+it("Hermes MCP configuration updates are selective, idempotent and collision-safe", () => {
+  execFileSync(process.env["OFFICECODE_PYTHON"] || (process.platform === "win32" ? "python" : "python3"),
+    ["-B", "test/hermes_config_test.py"], { cwd: process.cwd(), timeout: 15_000 });
+});
 
 it("Hermes installation respects HERMES_HOME and preserves settings, other plugins and managed backups", () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "office-hermes-install-"));
@@ -22,9 +26,14 @@ it("Hermes installation respects HERMES_HOME and preserves settings, other plugi
     const config = JSON.parse(fs.readFileSync(path.join(dir, "office-dashboard.json"), "utf8"));
     assert.equal(config.root, process.cwd());
     assert.equal(config.node, process.execPath);
+    assert.equal(fs.existsSync(path.join(dir, "delegation.py")), true);
     assert.match(fs.readFileSync(path.join(dir, "plugin.yaml"), "utf8"), /name: officecode/);
     assert.equal(fs.existsSync(path.join(home, "plugins/existing")), true);
     install();
     assert.equal(fs.readFileSync(path.join(dir, "__init__.py.bak"), "utf8"), "previous plugin");
+    execFileSync(process.execPath, ["scripts/install-hermes.cjs", "--no-enable", "--studio-workspace", home],
+      { cwd: process.cwd(), env: { ...process.env, HERMES_HOME: home }, timeout: 10_000 });
+    install();
+    assert.equal(JSON.parse(fs.readFileSync(path.join(dir, "office-dashboard.json"), "utf8")).studioWorkspace, home);
   } finally { fs.rmSync(home, { recursive: true, force: true }); }
 });

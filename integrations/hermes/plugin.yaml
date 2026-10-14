@@ -1,7 +1,8 @@
 name: officecode
 version: "0.1.0"
-description: "Visualize Hermes sessions and delegated agents in a live pixel-art office. No extra model calls."
-provides_tools: []
+description: "Visualize Hermes/OpenCode sessions and delegate explicit tasks to OpenCode. Visualization makes no model calls."
+provides_tools:
+  - officecode_delegate_opencode
 provides_hooks:
   - on_session_start
   - pre_llm_call

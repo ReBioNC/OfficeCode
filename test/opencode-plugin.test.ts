@@ -30,10 +30,12 @@ globalThis.fetch = async (url, options) => {
 };
 let dashboardUrl = "http://127.0.0.1:" + port;
 let disposeAfter = false;
+const snapshots = [];
 const api = async (p, body) => (await fetch(dashboardUrl + p, body
   ? { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }
   : {})).json();
 async function invoke(a) {
+  if (a.call === "snapshot") { snapshots.push((await api("/api/runs")).runs); return; }
   if (a.call === "dispose") { disposeAfter = true; return; }
   if (a.call === "parallel") { await Promise.all(a.actions.map(invoke)); return; }
   if (a.call === "event") await hooks.event({ event: a.event });
@@ -45,10 +47,11 @@ const runs = (await api("/api/runs")).runs.map((r) => ({ ...r }));
 const occupants = (await api("/api/office")).occupants;
 const info = await api("/api/health");
 if (disposeAfter) await hooks.dispose();
-console.log("RESULT:" + JSON.stringify({ toasts, runs, occupants, url: dashboardUrl, info }));
+console.log("RESULT:" + JSON.stringify({ toasts, runs, occupants, url: dashboardUrl, info, snapshots }));
 `;
 
 interface HarnessOut {
+  snapshots: HarnessOut['runs'][];
   toasts: string[];
   runs: Array<{ id: string; state: string; deskId: string; role?: string; activity?: string; detail?: string; sessionId?: string; prompt?: string; parentSessionId?: string; activeTools?: { id: string; name: string }[]; timeline?: { outcome?: string }[] }>;
   occupants: Record<string, string>;
@@ -163,18 +166,20 @@ describe("opencode plugin", () => {
     const out = await drive([
       { call: "event", event: { type: "session.created", properties: { info: { id: "plug-s1", title: "make x" } } } },
       { call: "tool.execute.before", input: { sessionID: "plug-s1", tool: "edit" } },
+      { call: "snapshot" },
+      { call: "event", event: { type: "permission.updated", properties: { sessionID: "plug-s1" } } },
+      { call: "snapshot" },
+      { call: "event", event: { type: "permission.replied", properties: { sessionID: "plug-s1" } } },
+      { call: "snapshot" },
+      { call: "event", event: { type: "session.idle", properties: { sessionID: "plug-s1" } } },
     ]);
-    const run = out.runs.find((r) => r.sessionId === "plug-s1");
+    const run = out.snapshots[0].find((r) => r.sessionId === "plug-s1");
     assert.ok(run);
     assert.equal(run.state, "acting");
     assert.ok(out.runs.some((r) => r.id === run.id));
-    const awaiting = await drive([{ call: "event", event: { type: "permission.updated", properties: { sessionID: "plug-s1" } } }]);
-    assert.equal(awaiting.runs.find((r) => r.id === run.id)?.state, "waiting-approval");
-    const resumed = await drive([{ call: "event", event: { type: "permission.replied", properties: { sessionID: "plug-s1" } } }]);
-    assert.equal(resumed.runs.find((r) => r.id === run.id)?.state, "thinking");
-    const done = await drive([
-      { call: "event", event: { type: "session.idle", properties: { sessionID: "plug-s1" } } },
-    ]);
+    assert.equal(out.snapshots[1].find((r) => r.id === run.id)?.state, "waiting-approval");
+    assert.equal(out.snapshots[2].find((r) => r.id === run.id)?.state, "acting");
+    const done = out;
     assert.equal(done.runs.find((r) => r.id === run.id)?.state, "done");
     assert.equal(run.deskId in done.occupants, false);
     const nextTurn = await drive([
@@ -189,15 +194,19 @@ describe("opencode plugin", () => {
       { call: "event", event: { type: "session.created", properties: { info: { id: sid, title: "Implement search" } } } },
       { call: "chat.message", input: { sessionID: sid, agent: "build" }, output: { message: {}, parts: [] } },
       { call: "tool.execute.before", input: { sessionID: sid, tool: "read" }, output: { args: { filePath: "src/search.ts" } } },
+      { call: "snapshot" },
+      { call: "tool.execute.after", input: {sessionID: sid, tool: "read"} },
+      { call: "tool.execute.before", input: { sessionID: sid, tool: "edit" }, output: { args: { filePath: "src/search.ts" } } },
+      { call: "snapshot" },
+      { call: "tool.execute.after", input: {sessionID: sid, tool: "edit"} },
+      { call: "tool.execute.before", input: { sessionID: sid, tool: "websearch" }, output: { args: { query: "search docs" } } },
     ]);
-    const run = out.runs.find((entry) => entry.sessionId === sid);
+    const run = out.snapshots[0].find((entry) => entry.sessionId === sid);
     assert.equal(run?.role, "build");
     assert.equal(run?.activity, "reading");
     assert.equal(run?.detail, "Reading search.ts");
-    const edited = await drive([{ call: "tool.execute.before", input: { sessionID: sid, tool: "edit" }, output: { args: { filePath: "src/search.ts" } } }]);
-    assert.equal(edited.runs.find((entry) => entry.sessionId === sid)?.activity, "editing");
-    const searched = await drive([{ call: "tool.execute.before", input: { sessionID: sid, tool: "websearch" }, output: { args: { query: "search docs" } } }]);
-    assert.equal(searched.runs.find((entry) => entry.sessionId === sid)?.activity, "web-search");
+    assert.equal(out.snapshots[1].find((entry) => entry.sessionId === sid)?.activity, "editing");
+    assert.equal(out.runs.find((entry) => entry.sessionId === sid)?.activity, "web-search");
   });
   it("mirrors a safe running-test cue without forwarding shell commands or arguments", async () => {
     for (const [index, command, expected] of [
@@ -317,5 +326,87 @@ describe("opencode plugin", () => {
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
     assert.fail("sidecar stayed online after plugin dispose");
+  });
+  it("removes its active character on dispose while another owner keeps the studio online", async () => {
+    const url = `http://127.0.0.1:${TEST_PORT}`;
+    const id = "f".repeat(32);
+    const requestLease = (method: string) => fetch(url+'/api/lease', {method,headers:{'content-type':'application/json'},body:JSON.stringify({id})});
+    await requestLease('POST');
+    try {
+      const out = await drive([
+        {call:'event',event:{type:'server.connected'}},
+        {call:'chat.message',input:{sessionID:'disposed-owner',agent:'build'}},
+        {call:'dispose'},
+      ]);
+      assert.equal(out.runs.find(r=>r.sessionId==='disposed-owner')?.state,'thinking');
+      const runs = (await (await fetch(url+'/api/runs')).json()).runs;
+      assert.equal(runs.find((r: any)=>r.sessionId==='disposed-owner').state,'blocked');
+      assert.equal((await fetch(url+'/api/health')).status,200);
+    } finally { await requestLease('DELETE'); }
+  });
+});
+
+// OpenCode 2.x rejects plugins without `export default { id, setup }` and feeds
+// `{ type, data }` events through ctx.event.subscribe instead of V1 hooks.
+const V2_HARNESS = `
+const [_, pluginUrl, port, ws, eventsJson] = process.argv;
+const mod = await import(pluginUrl);
+const plugin = mod.default;
+if (!plugin || typeof plugin.id !== "string" || typeof plugin.setup !== "function") throw new Error("missing V2 default export");
+const listeners = [];
+let unsubscribed = 0;
+const ctx = {
+  location: { directory: ws },
+  event: { subscribe: async (cb) => { listeners.push(cb); return { dispose: async () => { unsubscribed++; } }; } },
+};
+const finalize = await plugin.setup(ctx);
+const api = async (p) => (await fetch("http://127.0.0.1:" + port + p)).json();
+const snapshots = {};
+for (const e of JSON.parse(eventsJson)) {
+  if (e.snapshot) { snapshots[e.snapshot] = (await api("/api/runs")).runs; continue; }
+  for (const cb of listeners) await cb(e);
+}
+await new Promise((resolve) => setTimeout(resolve, 300));
+const runs = (await api("/api/runs")).runs;
+if (typeof finalize === "function") await finalize();
+console.log("RESULT:" + JSON.stringify({ id: plugin.id, listeners: listeners.length, unsubscribed, runs, snapshots }));
+`;
+
+describe("opencode 2.x plugin", () => {
+  it("exports a V2 definition and mirrors V2 session, tool and permission events", async () => {
+    const sid = "ses_v2_mirror";
+    const events = [
+      { type: "session.created", data: { sessionID: sid, title: "V2 task", agent: "build", location: { directory: ws } } },
+      { type: "session.execution.started", data: { sessionID: sid } },
+      { type: "session.tool.input.started", data: { sessionID: sid, id: "call-1", name: "edit" } },
+      { type: "session.tool.called", data: { sessionID: sid, id: "call-1", input: { filePath: "src/app.ts" } } },
+      { snapshot: "acting" },
+      { type: "session.tool.success", data: { sessionID: sid, id: "call-1" } },
+      { type: "permission.asked", data: { id: "per_1", sessionID: sid, action: "bash" } },
+      { snapshot: "waiting" },
+      { type: "permission.replied", data: { sessionID: sid, requestID: "per_1", reply: "once" } },
+      { type: "session.execution.succeeded", data: { sessionID: sid } },
+      { type: "session.created", data: { sessionID: "ses_v2_other", title: "Other", location: { directory: os.tmpdir() } } },
+      { type: "session.tool.called", data: { sessionID: "ses_v2_other", id: "call-x", name: "read" } },
+      { type: "session.tool.called", location: { directory: os.tmpdir() }, data: { sessionID: "ses_v2_scoped", id: "call-y", name: "read" } },
+    ];
+    const pluginUrl = pathToFileURL(path.join(process.cwd(), ".opencode", "plugins", "office-dashboard.js")).href;
+    const { stdout } = await execFileAsync(process.execPath,
+      ["--input-type=module", "--eval", V2_HARNESS, pluginUrl, String(TEST_PORT), ws, JSON.stringify(events)],
+      { encoding: "utf8", timeout: 30000,
+        env: { ...process.env, OFFICECODE_PORT: String(TEST_PORT), OFFICECODE_ROOT: process.cwd(), OFFICECODE_NODE: process.execPath } });
+    const line = stdout.split("\n").find((l) => l.startsWith("RESULT:"));
+    assert.ok(line, `V2 harness printed no RESULT (tail: ${stdout.slice(-500)})`);
+    const out = JSON.parse(line.slice("RESULT:".length));
+    const find = (runs: HarnessOut["runs"]) => runs.find((run) => run.sessionId === sid);
+    assert.equal(out.listeners, 1);
+    assert.equal(out.unsubscribed, 1);
+    assert.equal(find(out.snapshots.acting)?.state, "acting");
+    assert.equal(find(out.snapshots.acting)?.activity, "editing");
+    assert.equal(find(out.snapshots.acting)?.role, "build");
+    assert.equal(find(out.snapshots.waiting)?.state, "waiting-approval");
+    assert.equal(find(out.runs)?.state, "done");
+    assert.equal(find(out.runs)?.prompt, "V2 task");
+    assert.ok(!out.runs.some((run: { sessionId?: string }) => run.sessionId === "ses_v2_other" || run.sessionId === "ses_v2_scoped"));
   });
 });

@@ -1,4 +1,4 @@
-"""Native Hermes observers. No tools, model calls, or runtime overrides."""
+"""Native Hermes observers and an explicitly invoked OpenCode delegation tool."""
 import atexit
 from collections import deque
 import hashlib
@@ -13,6 +13,7 @@ import subprocess
 import threading
 import time
 import urllib.request
+import importlib.util
 
 LOG = logging.getLogger(__name__)
 HOOKS = (
@@ -222,6 +223,8 @@ class Channel:
                     if not bridge.is_file():
                         continue
                     env = dict(os.environ, OFFICECODE_HERMES_HOME=str(home), OFFICECODE_HERMES_PARENT_PID=str(os.getpid()))
+                    if config.get("studioWorkspace") and not env.get("OFFICECODE_STUDIO_WORKSPACE"):
+                        env["OFFICECODE_STUDIO_WORKSPACE"] = config["studioWorkspace"]
                     self.child = subprocess.Popen([os.environ.get("OFFICECODE_NODE") or config.get("node", "node"), str(bridge)],
                         stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env,
                         creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
@@ -243,8 +246,8 @@ class Channel:
 
 def dashboard_command(_args=""):
     """Read a registration; this command never starts a server or agent."""
-    _, home = settings()
-    workspace = str(home)
+    config, home = settings()
+    workspace = str(Path(os.environ.get("OFFICECODE_STUDIO_WORKSPACE") or config.get("studioWorkspace") or home).resolve())
     key = hashlib.sha256((workspace.lower() if os.name == "nt" else workspace).encode()).hexdigest()[:16]
     state = Path(os.environ.get("LOCALAPPDATA", str(Path.home() / ".local/share"))) / "OfficeCode/projects" / key
     try:
@@ -260,15 +263,28 @@ def dashboard_command(_args=""):
                 return f"Office dashboard → {url}\nHermes connected. Tasks and models run in Hermes."
     except (OSError, ValueError, KeyError, TypeError, AttributeError):
         pass
-    return "Office dashboard is not running. Send a task in Hermes Desktop first."
+    return "Office dashboard is not running. Reopen Hermes CLI/Desktop and check the OfficeCode MCP connector."
+
+
+def make_delegator(observer, channel):
+    spec = importlib.util.spec_from_file_location(__name__ + ".delegation", Path(__file__).parent / "delegation.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    controller = module.Delegator(observer, channel, settings)
+    controller.schema = module.SCHEMA
+    return controller
 
 
 def register(ctx):
     channel = Channel()
     observer = Observer(channel.emit)
+    delegator = make_delegator(observer, channel)
+    ctx.register_tool(name="officecode_delegate_opencode", toolset="officecode", schema=delegator.schema,
+        handler=delegator, check_fn=delegator.available, description="Delegate a real task to OpenCode", emoji="🏢")
     for name in HOOKS:
         def callback(_event=name, **kwargs):
             return observer.handle(_event, **kwargs)
         ctx.register_hook(name, callback)
     ctx.register_command("office-dashboard", dashboard_command, description="Show the OfficeCode studio URL without running a model")
     atexit.register(channel.close)
+    atexit.register(delegator.close)

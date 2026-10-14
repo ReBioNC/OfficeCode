@@ -16,7 +16,7 @@ it("Hermes observer preserves host behavior and projects concurrent tools, deleg
     ["-B", "test/hermes_adapter_test.py"], { cwd: root, timeout: 20_000 });
 });
 
-it("Hermes bridge retries a failed completion instead of leaving a ghost agent", { timeout: 15_000 }, async () => {
+it("Hermes bridge retries failed completion and rehydrates a recreated owner lease", { timeout: 20_000 }, async () => {
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), "office-hermes-retry-"));
   const home = path.join(temp, "profile");
   fs.mkdirSync(home);
@@ -25,12 +25,16 @@ it("Hermes bridge retries a failed completion instead of leaving a ghost agent",
   let hasAgent = false;
   let failNextLease = false;
   let leaseFailed = false;
+  let recreateNextLease = false;
   const server = createServer((req, res) => {
     req.resume();
     res.setHeader("content-type", "application/json");
     if (req.url === "/api/health") res.end(JSON.stringify({ ok: true, service: "officecode", workspace: home, mirrorOnly: true, leaseManaged: true }));
     else if (req.url === "/api/lease" && req.method === "POST" && failNextLease) {
       failNextLease = false; leaseFailed = true; res.statusCode = 503; res.end('{}');
+    }
+    else if (req.url === "/api/lease" && req.method === "POST" && recreateNextLease) {
+      recreateNextLease = false; res.end('{"created":true}');
     }
     else if (req.url === "/api/mirror/session") { hasAgent = true; res.end('{}'); }
     else if (req.url === "/api/mirror/finish") {
@@ -50,7 +54,7 @@ it("Hermes bridge retries a failed completion instead of leaving a ghost agent",
   });
   try {
     child.stdin.write(JSON.stringify({ sessionId: "main", state: "thinking", prompt: "Work", activeTools: [] }) + "\n");
-    const deadline = Date.now() + 8000;
+    const deadline = Date.now() + 15000;
     while (!hasAgent && Date.now() < deadline) await sleep(50);
     assert.equal(hasAgent, true);
     child.stdin.write(JSON.stringify({ sessionId: "main", outcome: "done" }) + "\n");
@@ -60,6 +64,10 @@ it("Hermes bridge retries a failed completion instead of leaving a ghost agent",
     child.stdin.write(JSON.stringify({ sessionId: "main", state: "thinking", prompt: "Next", activeTools: [] }) + "\n");
     while (!hasAgent && Date.now() < deadline) await sleep(25);
     assert.equal(hasAgent, true);
+    // Another owner kept the server alive, but our lease and quiet actor expired.
+    hasAgent = false; recreateNextLease = true;
+    while ((recreateNextLease || !hasAgent) && Date.now() < deadline) await sleep(25);
+    assert.equal(hasAgent, true, "renewal must rehydrate quiet actors without new telemetry");
     failNextLease = true;
     while (!leaseFailed && Date.now() < deadline) await sleep(25);
     assert.equal(leaseFailed, true);

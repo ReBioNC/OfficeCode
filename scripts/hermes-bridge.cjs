@@ -7,7 +7,7 @@ const readline = require("node:readline");
 const { spawn } = require("node:child_process");
 
 const root = path.resolve(__dirname, "..");
-const workspace = path.resolve(process.env.OFFICECODE_HERMES_HOME || process.env.HERMES_HOME || path.join(os.homedir(), ".hermes"));
+const workspace = path.resolve(process.env.OFFICECODE_STUDIO_WORKSPACE || process.env.OFFICECODE_HERMES_HOME || process.env.HERMES_HOME || path.join(os.homedir(), ".hermes"));
 const key = crypto.createHash("sha256").update(process.platform === "win32" ? workspace.toLowerCase() : workspace).digest("hex").slice(0, 16);
 const state = path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), ".local", "share"), "OfficeCode", "projects", key);
 const leaseId = crypto.randomBytes(16).toString("hex");
@@ -91,7 +91,8 @@ async function publish(event) {
   if (!base) return false;
   if (!known.has(event.sessionId)) {
     const registered = await request(base, "/api/mirror/session", { sessionId, role: event.role || "hermes",
-      prompt: event.prompt || "Hermes session", parentSessionId: event.parentSessionId ? sid(event.parentSessionId) : undefined });
+      prompt: event.prompt || "Hermes session", parentSessionId: event.parentSessionId ? sid(event.parentSessionId) : undefined,
+      runtime: event.runtime || "hermes", agent: event.agent || event.role || "hermes", workspace: event.workspace, ownerLeaseId: leaseId });
     if (!registered) { url = null; return false; }
     known.add(event.sessionId);
   }
@@ -117,6 +118,7 @@ input.on("line", (line) => {
   if (closed || line.length > 128_000) return;
   try {
     const event = JSON.parse(line);
+    if (event?.kind === "start") { void connect().catch(() => {}); return; }
     if (!event || typeof event.sessionId !== "string" || !event.sessionId || event.sessionId.length > 200) return;
     if (event.outcome ? !["done", "blocked"].includes(event.outcome) : !["thinking", "acting", "waiting-approval"].includes(event.state)) return;
     if (pending.length >= 512) { void close(); return; }
@@ -134,6 +136,7 @@ const heartbeat = setInterval(() => {
     const base = url;
     leasePending = request(base, "/api/lease", { id: leaseId }).then((result) => {
       if (!result && !closed && url === base) { url = null; known.clear(); }
+      else if (result?.created && !closed && url === base) known.clear();
     }).finally(() => { leasePending = null; });
   }
   if (flushing) return;
