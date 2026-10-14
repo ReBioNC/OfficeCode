@@ -36,6 +36,40 @@ async function mirror(p: string, body: unknown): Promise<{ status: number; json:
 }
 
 describe("mirror api", () => {
+  it("round-trips explicit runtime, original agent and actual workspace through updates and history", async () => {
+    const registration = await mirror("/api/mirror/session", { sessionId: "mixed-runtime", role: "qa-engineer", agent: "custom-auditor", runtime: "opencode", workspace: "C:\\projects\\actual-child", parentSessionId: "hermes-parent", prompt: "Verify feature" });
+    assert.equal(registration.status, 201);
+    const registered = registration.json["run"] as Record<string, unknown>;
+    assert.equal(registered["runtime"], "opencode");
+    assert.equal(registered["workspace"], "C:\\projects\\actual-child");
+    assert.equal(registered["agent"], "custom-auditor");
+    const update = await mirror("/api/mirror/session", { sessionId: "mixed-runtime", prompt: "Updated task" });
+    const updated = update.json["run"] as Record<string, unknown>;
+    assert.equal(updated["runtime"], "opencode");
+    assert.equal(updated["workspace"], "C:\\projects\\actual-child");
+    assert.equal(updated["agent"], "custom-auditor");
+    assert.equal(updated["role"], "qa-engineer");
+    await mirror("/api/mirror/session", { sessionId: "mixed-runtime", runtime: "hermes", workspace: "/actual/new-workspace" });
+    await mirror("/api/mirror/finish", { sessionId: "mixed-runtime", outcome: "done" });
+    const history = (await (await fetch(`${base}/api/runs/${registered["id"]}`)).json() as { run: Record<string, unknown> }).run;
+    assert.equal(history["runtime"], "hermes");
+    assert.equal(history["workspace"], "/actual/new-workspace");
+    assert.equal(history["agent"], "custom-auditor");
+  });
+  it("rejects malformed provenance before creating or changing a mirror", async () => {
+    for (const metadata of [{ runtime: "claude" }, { runtime: null }, { workspace: 42 }, { workspace: "x".repeat(4097) }, { workspace: "" }, { agent: 42 }, { agent: "x".repeat(49) }, { role: "x".repeat(49) }]) {
+      assert.equal((await mirror("/api/mirror/session", { sessionId: "bad-provenance", ...metadata })).status, 400, JSON.stringify(metadata).slice(0, 80));
+    }
+    const legacy = await mirror("/api/mirror/session", { sessionId: "legacy-provenance", role: "hermes" });
+    assert.equal((legacy.json["run"] as Record<string, unknown>)["runtime"], undefined);
+    const valid = await mirror("/api/mirror/session", { sessionId: "max-workspace", runtime: "hermes", workspace: "x".repeat(4096) });
+    assert.equal(valid.status, 201);
+    assert.equal((await mirror("/api/mirror/session", { sessionId: "max-workspace", runtime: "invalid" })).status, 400);
+    const detail = (await (await fetch(`${base}/api/runs/${(valid.json["run"] as Record<string, unknown>)["id"]}`)).json() as { run: Record<string, unknown> }).run;
+    assert.equal(detail["runtime"], "hermes");
+    await mirror("/api/mirror/finish", { sessionId: "legacy-provenance", outcome: "done" });
+    await mirror("/api/mirror/finish", { sessionId: "max-workspace", outcome: "done" });
+  });
   it("bounds long workflows while retaining the newest actions and completion", async () => {
     await mirror("/api/mirror/session",{sessionId:"long-workflow",prompt:"Long workflow"});
     for (let i=0;i<105;i++) await mirror("/api/mirror/event",{sessionId:"long-workflow",state:"acting",activity:"reading",detail:`Reading file ${i}`});

@@ -14,6 +14,10 @@ describe("displayWorkRole", () => {
   it("names a single visible OpenCode agent Fullstack", () => {
     assert.equal(displayWorkRole({ role: "opencode", prompt: "Menguji API" }, true), "Fullstack");
   });
+  it("names a single Hermes agent Fullstack and infers delegated work without a model", () => {
+    assert.equal(displayWorkRole({ role: "hermes", prompt: "Build a feature" }, true), "Fullstack");
+    assert.equal(displayWorkRole({ role: "hermes", prompt: "Build a React component" }, false), "Frontend");
+  });
 
   it("uses specific OpenCode agent roles before task hints", () => {
     assert.equal(displayWorkRole({ role: "frontend-dev", prompt: "Review komponen" }, false), "Frontend");

@@ -1,6 +1,7 @@
 import { deskPoint, roomRect, type Rect } from "./layout";
 import { displayWorkRole, resolveWorkRole } from "./work-role";
 import { resolveFocus, hitAgent, delegationRows } from "./agent-inspector";
+import { agentProvenance, runtimeLabel } from "./agent-provenance";
 import { stepDuration, type ActivityStep, type ActiveTool } from "../shared/run-history";
 import { attachStudioCamera, type CameraView } from "./studio-camera";
 import { attachPanelLayout } from "./panel-layout";
@@ -36,7 +37,7 @@ interface Room { id: string; name: string; color: string }
 interface Hallway { fromRoomId: string; toRoomId: string; open: boolean }
 interface PlacedObject { id: string; roomId: string; kind: string }
 interface OfficeDoc { building: string; rooms: Room[]; desks: Desk[]; hallways: Hallway[]; objects: PlacedObject[] }
-interface Run { id: string; deskId: string; role: string; state: string; prompt: string; sessionId?: string; parentSessionId?: string; activity?: string; detail?: string; startedAt?: string; finishedAt?: string; timeline?: ActivityStep[]; historyTruncated?: number; activeTools?: ActiveTool[] }
+interface Run { id: string; deskId: string; role: string; state: string; prompt: string; agent?: string; runtime?: "opencode" | "hermes"; workspace?: string; sessionId?: string; parentSessionId?: string; activity?: string; detail?: string; startedAt?: string; finishedAt?: string; timeline?: ActivityStep[]; historyTruncated?: number; activeTools?: ActiveTool[] }
 interface QueueItem { position: number; deskId: string; role: string; prompt: string }
 
 const COLORS = {
@@ -450,14 +451,14 @@ function renderAttention(connectionIssue?: string): void {
   section.hidden = count === 0;
   const list = document.getElementById("attentionList") as HTMLElement;
   const nodes: HTMLElement[] = [];
-  if (connectionIssue) nodes.push(element("li", "attention-item", `${connectionIssue}. Displayed activity may be stale. Check OpenCode and the dashboard URL; this view reconnects automatically.`));
+  if (connectionIssue) nodes.push(element("li", "attention-item", `${connectionIssue}. Displayed activity may be stale. Check your agent app and the dashboard URL; this view reconnects automatically.`));
   for (const run of warnings) {
     const warning = attentionFor(run)!;
     const item = element("li", "attention-item");
     const choose = element("button", "inspect-button", `! ${warning.label} · ${displayWorkRole(run, false)}`);
     choose.type = "button"; choose.dataset.focusKey = `attention:${run.id}`;
     choose.onclick = () => selectAgent(run.id);
-    item.append(choose, element("p", "", warning.detail), element("span", "team-parent", "Handle permissions and errors in OpenCode."));
+    item.append(choose, element("p", "", warning.detail), element("span", "team-parent", "Handle permissions and errors in your agent app."));
     nodes.push(item);
   }
   list.replaceChildren(...nodes);
@@ -536,8 +537,9 @@ function renderPanels(): void {
     choose.type = "button";
     choose.dataset.focusKey = `team:${run.id}`;
     choose.onclick = () => selectAgent(run.id);
+    choose.prepend(element("span", "runtime-badge", runtimeLabel(run)), document.createTextNode(" "));
     item.append(choose, element("span", "team-parent", run.parentSessionId
-      ? `Delegated by ${parent ? `${displayWorkRole(parent, false)} · ${short(parent.prompt, 32)}` : "parent session (not on this floor)"}`
+      ? `Delegated by ${parent ? `${runtimeLabel(parent)} · ${displayWorkRole(parent, false)} · ${short(parent.prompt, 32)}` : "Unknown runtime · parent session (not on this floor)"}`
       : "Main session"));
     return item;
   }));
@@ -545,19 +547,26 @@ function renderPanels(): void {
   (document.getElementById("focusSection") as HTMLElement).hidden = !mirrorOnly;
   (document.getElementById("activityTracker") as HTMLElement).hidden = !mirrorOnly;
   if (mirrorOnly) {
+    const provenance = agentProvenance(focus, runs);
+    (document.getElementById("focusRuntime") as HTMLElement).textContent = provenance.runtime;
+    (document.getElementById("focusAgent") as HTMLElement).textContent = provenance.agent;
+    (document.getElementById("focusWorkspace") as HTMLElement).textContent = provenance.workspace;
+    (document.getElementById("focusParent") as HTMLElement).textContent = provenance.parent;
+    (document.getElementById("focusElapsed") as HTMLElement).textContent = focus?.startedAt
+      ? stepDuration({ at: focus.startedAt, state: focus.state, activity: focus.activity ?? focus.state, detail: "" }, focus.finishedAt) : "Not provided";
     (document.getElementById("focusStation") as HTMLElement).textContent = focus ? activityOf(focus).station : "Standby";
-    (document.getElementById("focusRole") as HTMLElement).textContent = focus ? `Agent ${roleFor(focus)} · ${activityOf(focus).persona}` : "OpenCode agent";
+    (document.getElementById("focusRole") as HTMLElement).textContent = focus ? `Agent ${roleFor(focus)} · ${activityOf(focus).persona}` : "Connected agent";
     if (focus) {
       const source = resolveWorkRole(focus, sessions.length === 1 && sessions[0]?.id === focus.id).source;
       (document.getElementById("focusRole") as HTMLElement).textContent += source === "inferred" ? " · inferred role" : source === "single-agent" ? " · single-agent role" : "";
     }
     (document.getElementById("focusTask") as HTMLElement).textContent = focus?.prompt || (selectedRoomId ? "No agents in this room" : "Waiting for a session");
     (document.getElementById("focusActivity") as HTMLElement).textContent = focus ? activityOf(focus).label : "No activity yet";
-    (document.getElementById("focusDetail") as HTMLElement).textContent = focus?.detail || "Start working on a feature in OpenCode.";
+    (document.getElementById("focusDetail") as HTMLElement).textContent = focus?.detail || "Start working on a feature in your agent app.";
     const warning = focus ? attentionFor(focus) : undefined;
     const focusAttention = document.getElementById("focusAttention") as HTMLElement;
     focusAttention.hidden = !warning;
-    focusAttention.textContent = warning ? `${warning.label}: ${warning.detail} Handle this in OpenCode.` : "";
+    focusAttention.textContent = warning ? `${warning.label}: ${warning.detail} Handle this in your agent app.` : "";
     const tools = document.getElementById("activeTools") as HTMLElement;
     tools.replaceChildren(...(focus?.activeTools ?? []).map((tool) => element("li", "tool-item", `${tool.name} · ${tool.detail}`)));
     tools.hidden = !focus?.activeTools?.length;
@@ -611,7 +620,7 @@ function renderPanels(): void {
     if (mirrorOnly && run.detail) item.append(element("p", "activity-detail", short(run.detail, 100)));
     return item;
   });
-  if (activityNodes.length === 0) activityNodes.push(element("li", "empty", "No activity yet. Start a task in OpenCode."));
+  if (activityNodes.length === 0) activityNodes.push(element("li", "empty", "No activity yet. Start a task in your agent app."));
   runsUl.replaceChildren(...activityNodes);
 
   queueUl.replaceChildren(...queue.map((entry) => {
@@ -635,7 +644,7 @@ function renderPanels(): void {
       if (portraitCtx) drawSprite(portraitCtx, avatarFrame(run.sessionId ?? run.id, CHAR_FRAMES.idle), agentPalette(workRole, run.sessionId ?? run.id), 3, 3, 2);
       avatar.append(portrait);
       const copy = element("div", "crew-copy");
-      copy.append(element("span", "crew-name", workRole), element("span", "crew-meta", short(`${run.role} · ${run.prompt}`, 36)),
+      copy.append(element("span", "crew-name", workRole), element("span", "runtime-badge", runtimeLabel(run)), element("span", "crew-meta", short(`${run.agent ?? run.role} · ${run.prompt}`, 36)),
         element("span", "crew-status", activityOf(run).label));
       const choose = element("button", "crew-select");
       choose.type = "button";
@@ -1138,7 +1147,7 @@ function drawSessionFloor(tick: number, now: number): void {
     drawStudioDoors(now);
     renderRoomInspector(true);
     plate("STUDIO STANDBY", 1080, 974, "#f8be6a");
-    textOnCanvas("Start a task in OpenCode.", 1080, 1010, theme.ui.ink, 12);
+    textOnCanvas("Start a task in your agent app.", 1080, 1010, theme.ui.ink, 12);
     return;
   }
   drawStudioDoors(now);
@@ -1162,7 +1171,7 @@ function drawSessionFloor(tick: number, now: number): void {
   if (photoMode) return;
   ctx.fillStyle = "#1b1d3b"; ctx.fillRect(42, canvas.height - 27, canvas.width - 84, 16);
   ctx.fillStyle = activityOf(primary).color; ctx.fillRect(42, canvas.height - 27, 5, 16);
-  textOnCanvas(short(primary.prompt || "OpenCode session", 47), 54, canvas.height - 25, COLORS.light, 11);
+  textOnCanvas(short(primary.prompt || "Agent session", 47), 54, canvas.height - 25, COLORS.light, 11);
   const activeCount = sessions.filter((run) => run.state !== "done" && run.state !== "blocked").length;
   textOnCanvas(`${activeCount} ACTIVE ${activeCount === 1 ? "AGENT" : "AGENTS"}`, canvas.width - 200, canvas.height - 25, COLORS.light, 11);
 }

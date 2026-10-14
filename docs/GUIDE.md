@@ -1,6 +1,6 @@
 # OfficeCode guide
 
-OfficeCode shows [OpenCode](https://opencode.ai/) session activity as a pixel-art office in your browser. Its global plugin mirrors sessions, tool activity, and permission requests to a local dashboard. **OpenCode still selects and runs every model**; the dashboard does not run models on its own.
+OfficeCode shows [OpenCode](https://opencode.ai/) and [Hermes Agent Desktop](https://hermes-agent.nousresearch.com/) activity as a pixel-art office in your browser. Its adapters mirror sessions, tools, and permission requests to a local dashboard. **Your agent app selects and runs every model**; the dashboard does not run models on its own. The OpenCode instructions below remain specific to OpenCode; see the Hermes section for Desktop setup.
 
 ## Preview
 
@@ -346,3 +346,40 @@ Focus feature highlights the selected agent's main run and recorded descendant t
 Photo mode fits the full studio preview and hides normal controls, the activity panel and crew. Choose a temporary theme and Roles only / Activity and roles / Hide agent labels, then Export PNG. Default roles-only mode omits activity bubbles and the task title band; activity labels can include filenames. PNG contains the whole studio at its current horizontal aspect, with no toolbar or viewport crop. Exports are limited to 8192 pixels per dimension and 16 million pixels, scaling large floors uniformly. Download stays local. Exit photo mode or Escape restores the UI/theme and previous camera in the same layout/breakpoint; underlying OpenCode sessions keep running.
 
 Project dashboard switches this browser tab to another active OpenCode project. Open OpenCode in each project first; servers keep their independent workspaces, sessions and lifetimes. The dropdown refreshes every five seconds while visible (pauses while choosing) and rechecks the destination before navigation. Same-name folders use a short unique parent path; the control title exposes the full workspace path. The refresh button updates manually. Closed/stale/wrong-workspace/redirected registrations are ignored. Discovery reads only existing local plugin connection records and loopback health, with bounded concurrency and response size, and makes no model calls. An old server without /api/projects shows a restart message; reopen OpenCode and hard-refresh the browser after updating. The current dashboard remains available in preview mode even though other listed projects require live OpenCode connections.
+
+## Hermes Agent Desktop
+
+Install the native observer adapter from a permanent OfficeCode checkout:
+
+```bash
+npm ci
+npm run install:hermes
+```
+
+Node.js 18+, the `hermes` CLI, and Hermes's Python environment with PyYAML must be available. The installer saves `__init__.py`, `delegation.py`, `plugin.yaml`, and a checkout/Node-path registration under `<HERMES_HOME>/plugins/officecode/`. It adds a managed `mcp_servers.officecode` entry with explicit `env.HERMES_HOME`, then uses `hermes plugins enable officecode`. Other settings, models, plugins and MCP entries are preserved; an unmanaged MCP entry with the same name is never overwritten. Managed file changes get `.bak` backups; config changes get `config.yaml.officecode.bak`. `--no-enable` installs files only and does not configure startup. Set `OFFICECODE_HERMES_CLI` or `OFFICECODE_HERMES_PYTHON` when the installer cannot locate Hermes's executables.
+
+The active `HERMES_HOME` takes priority. Without it, the installer follows local Desktop defaults: `%LOCALAPPDATA%\hermes` on Windows (an existing legacy `~/.hermes` is retained if the Desktop directory is absent), `~/.hermes` on macOS/Linux. If Desktop uses another profile, set `HERMES_HOME` to that profile's directory before installing; repeat for each profile you want to monitor.
+
+Quit and reopen Hermes CLI/Desktop so its local backend reloads plugins and MCP servers. The dashboard starts during MCP discovery, before your first task. Run `/office-dashboard` and open the returned URL. This command performs only a bounded local health read; it does not start a model, task, or server. The read-only MCP tool `officecode_status` also reports its URL. `/dashboard` remains the OpenCode command. No Desktop source files or provider credentials are modified. Pasteable installation/update prompts are in the [README](../README.md).
+
+### Events and lifecycle
+
+The Python plugin uses Hermes's public hook, command and native-tool registration APIs. Hooks remain inert until an actual task. A stdio MCP connector starts a loopback-only mirror server on initialization and owns a lease; the observer holds a separate lease while emitting task activity. EOF, host exit or connection loss releases/expires these leases. The sidecar stops after its last owner disconnects. An owner's characters are removed when its lease ends, including crashes, while other owners remain connected. Quitting Windows Desktop stops its managed backends. Minimizing the app or closing a browser tab is not quitting it; a separately running gateway can remain alive. Remote gateway access/embedded Desktop panes are not part of this local integration.
+
+By default, Hermes groups sessions by profile and OpenCode by its actual project directory; each app works independently. To share a studio, run `npm run install:hermes -- --studio-workspace "<existing absolute project directory>"`, then open OpenCode in that directory and restart Hermes. The selection is preserved on update. `OFFICECODE_STUDIO_WORKSPACE` overrides the stored Hermes choice; OpenCode continues to use its actual project. Hermes's MCP environment filters inherited custom variables, so apply launch overrides consistently to the managed MCP entry's `env` as well as the Hermes host. To return to profile grouping, remove `studioWorkspace` from `<HERMES_HOME>/plugins/officecode/office-dashboard.json` and restart. Namespaced sessions avoid ID collisions. No model is started for visualization, and `POST /api/runs` remains disabled.
+
+Hermes observer payloads do not report the Desktop task workspace, so its inspector shows **Not provided** rather than treating the studio directory as a task directory. OpenCode and delegated jobs report their actual workspace. Clicking a character shows runtime, original agent, display role, task, activity, parent and elapsed time; explicit provenance is never inferred from the session ID.
+
+### Delegate real OpenCode work
+
+With OpenCode installed/configured, Hermes gains the native tool **officecode_delegate_opencode**. Required arguments are `prompt` and an existing absolute `workspace`; optional `agent` defaults to `build`, and `role` only controls the display label. The parent comes from Hermes's trusted dispatch context, including session compression aliases. An unknown/inactive parent is rejected. Up to four jobs run concurrently; additional jobs return a capacity error that Hermes can retry after a job finishes.
+
+Each job runs `opencode run --format json --agent <agent>` in that workspace, passing the prompt over stdin. OpenCode selects its own model and permissions. Other OpenCode plugins are retained; only OfficeCode's duplicate child mirror is suppressed. The worker returns assistant text, outcome and the native OpenCode session ID to Hermes. The studio uses a stable job projection ID separately. Structured tool cues update the character; JSON CLI versions may report a tool only after completion, so the dashboard cannot invent progress before an event arrives.
+
+Hermes Stop/interrupt or host exit cancels only its owned jobs and their process trees. Jobs have a ten-minute timeout, 1 MiB event-line limit, 16 MiB output limit, and 64,000-character result limit (reported with `truncated`). Permission-required/denied, missing CLI, malformed output, timeouts and failed tools return blocked outcomes. Delegated execution consumes OpenCode model tokens; adding native/MCP tool schemas also increases Hermes context slightly. Animation itself consumes no model tokens.
+
+Turn/API hooks animate thinking; tool hooks show reading, editing, web/code search, terminal/testing, and delegation. Concurrent tools stay visible until each finishes. Approval hooks correlate through the native turn ID. `on_session_end` provides the authoritative outcome for both foreground and background children, including cancellation/incomplete runs; completion removes their characters while retaining observed workflow history. Compression-driven session ID changes are correlated through `turn_id`. A single generic Hermes agent shows **Fullstack**; explicit child roles/custom names take priority. Raw tool arguments, responses, output, and credentials are never sent to OfficeCode. Optional dashboard failures return no context or policy directives to Hermes.
+
+Update from a clean checkout with `git pull --ff-only`, `npm ci`, and `npm run install:hermes`, then quit/reopen Hermes and hard-refresh the browser. To disable/remove completely, use `hermes plugins disable officecode` or `hermes plugins remove officecode`, **also remove only `mcp_servers.officecode` from that profile's config.yaml**, then restart. Disabling the observer alone leaves the MCP startup connection active. Keep all other MCP entries and settings.
+
+Compatibility checks use the installed Hermes backend's plugin loader and MCP client (package 0.16.0), with Desktop source 0.15.1. Development tests use deterministic OpenCode executables rather than provider execution. The Hermes tests require Python 3.11+ with PyYAML (`OFFICECODE_PYTHON` selects the test interpreter). Recheck integration after upstream API changes.

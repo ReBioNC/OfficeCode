@@ -1,0 +1,20 @@
+name: officecode
+version: "0.1.0"
+description: "Visualize Hermes/OpenCode sessions and delegate explicit tasks to OpenCode. Visualization makes no model calls."
+provides_tools:
+  - officecode_delegate_opencode
+provides_hooks:
+  - on_session_start
+  - pre_llm_call
+  - post_llm_call
+  - on_session_end
+  - on_session_finalize
+  - on_session_reset
+  - pre_api_request
+  - api_request_error
+  - pre_tool_call
+  - post_tool_call
+  - subagent_start
+  - subagent_stop
+  - pre_approval_request
+  - post_approval_response

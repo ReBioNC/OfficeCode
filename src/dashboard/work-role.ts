@@ -4,7 +4,7 @@ export interface WorkRoleSource {
   detail?: string;
 }
 
-const GENERIC_AGENTS = new Set(["opencode", "build", "general", "default", "agent"]);
+const GENERIC_AGENTS = new Set(["opencode", "hermes", "build", "general", "default", "agent"]);
 
 function explicitRole(name: string): string | undefined {
   const value = name.toLowerCase().replace(/[_-]/g, " ").trim();
